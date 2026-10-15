@@ -1,6 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import healthRoutes from './routes/health.routes.js';
+import resumeRoutes from './routes/resume.routes.js';
+import jobRoutes from './routes/job.routes.js';
+import matchRoutes from './routes/match.routes.js';
+import { seedInitialData } from './config/seed.js';
 
 const app = express();
 
@@ -18,6 +22,19 @@ app.use(express.urlencoded({ extended: true }));
 
 // API Routes
 app.use('/api', healthRoutes);
+app.use('/api/resumes', resumeRoutes);
+app.use('/api/jobs', jobRoutes);
+app.use('/api/matches', matchRoutes);
+
+// Seed sample data helper
+app.post('/api/seed', async (req, res, next) => {
+  try {
+    const result = await seedInitialData();
+    res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Root route
 app.get('/', (req, res) => {
