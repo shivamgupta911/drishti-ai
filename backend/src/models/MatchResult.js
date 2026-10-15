@@ -18,12 +18,33 @@ const matchResultSchema = new mongoose.Schema(
       min: 0,
       max: 100,
     },
+    tier: {
+      type: String,
+      default: 'Tier 3: Low Fit',
+    },
     breakdown: {
       skillsMatchScore: { type: Number, required: true },
       experienceMatchScore: { type: Number, required: true },
       preferredSkillsBonus: { type: Number, default: 0 },
     },
     matchingSkills: [{ type: String }],
+    exactMatches: [{ type: String }],
+    synonymMatches: [
+      {
+        candidateTerm: { type: String },
+        targetTerm: { type: String },
+        attribution: { type: String },
+      },
+    ],
+    affinityMatches: [
+      {
+        candidateTerm: { type: String },
+        targetTerm: { type: String },
+        affinityScore: { type: Number },
+        domain: { type: String },
+        attribution: { type: String },
+      },
+    ],
     missingRequiredSkills: [{ type: String }],
     matchedPreferredSkills: [{ type: String }],
     missingPreferredSkills: [{ type: String }],

@@ -5,9 +5,6 @@ import {
   Target, 
   Scale, 
   Activity, 
-  Server, 
-  Database, 
-  Layers, 
   ShieldCheck, 
   RefreshCw, 
   CheckCircle2, 
@@ -16,19 +13,12 @@ import {
   Upload, 
   Plus, 
   ChevronRight, 
-  Award, 
   AlertTriangle, 
-  UserCheck, 
   Trash2, 
   Zap, 
-  Clock,
-  BarChart3,
-  Users,
-  FileCheck,
-  Download,
-  ArrowRight,
-  TrendingUp,
-  Tag
+  BarChart3, 
+  FileCheck, 
+  Download 
 } from 'lucide-react';
 
 export default function App() {
@@ -43,7 +33,6 @@ export default function App() {
   // Data collections
   const [resumes, setResumes] = useState([]);
   const [jobs, setJobs] = useState([]);
-  const [loadingData, setLoadingData] = useState(false);
 
   // Match Studio state
   const [selectedResumeId, setSelectedResumeId] = useState('');
@@ -66,7 +55,6 @@ export default function App() {
 
   // Audit Dossier Modal state
   const [activeDossier, setActiveDossier] = useState(null);
-  const [loadingDossier, setLoadingDossier] = useState(false);
 
   // Ingestion form state
   const [resumeText, setResumeText] = useState('');
@@ -231,7 +219,6 @@ export default function App() {
 
   const handleOpenDossier = async (matchId) => {
     if (!matchId) return;
-    setLoadingDossier(true);
     try {
       const res = await fetch(`/api/matches/${matchId}/report`);
       const data = await res.json();
@@ -240,8 +227,6 @@ export default function App() {
       }
     } catch (err) {
       console.error('Error fetching dossier:', err);
-    } finally {
-      setLoadingDossier(false);
     }
   };
 

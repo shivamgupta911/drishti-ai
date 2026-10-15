@@ -280,9 +280,9 @@ export function compareTwoCandidates(candidateA, candidateB, job) {
   const scoreDiff = evalA.overallScore - evalB.overallScore;
   let leader = null;
   if (scoreDiff > 0) {
-    leader = { id: candidateA._id, name: candidateA.candidateName, margin: scoreDiff };
+    leader = { id: candidateA._id, name: candidateA.candidateName, margin: scoreDiff, candidateKey: 'A' };
   } else if (scoreDiff < 0) {
-    leader = { id: candidateB._id, name: candidateB.candidateName, margin: Math.abs(scoreDiff) };
+    leader = { id: candidateB._id, name: candidateB.candidateName, margin: Math.abs(scoreDiff), candidateKey: 'B' };
   }
 
   // Skills only A has
