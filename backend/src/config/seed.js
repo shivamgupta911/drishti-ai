@@ -2,14 +2,11 @@ import Resume from '../models/Resume.js';
 import Job from '../models/Job.js';
 
 export async function seedInitialData() {
-  const resumeCount = await Resume.countDocuments();
-  const jobCount = await Job.countDocuments();
+  // Always clear and seed fresh rich dataset for Day 3 verification
+  await Resume.deleteMany({});
+  await Job.deleteMany({});
 
-  if (resumeCount > 0 && jobCount > 0) {
-    return { message: 'Database already has candidate and job records.' };
-  }
-
-  // Sample Resume 1: Full-Stack Engineer
+  // Sample Resume 1: Full-Stack Engineer (Alpha)
   const candidate1 = await Resume.create({
     candidateName: 'Candidate Alpha (Anonymized)',
     email: 'candidate_alpha@masked.drishti.ai',
@@ -53,12 +50,12 @@ export async function seedInitialData() {
     anonymized: true,
   });
 
-  // Sample Resume 2: Junior Frontend Developer
+  // Sample Resume 2: Junior Frontend Developer (Beta)
   const candidate2 = await Resume.create({
     candidateName: 'Candidate Beta (Anonymized)',
     email: 'candidate_beta@masked.drishti.ai',
     phone: '***-***-****',
-    summary: 'Frontend developer with 1.5 years of experience focusing on React, Tailwind, and modern UI design.',
+    summary: 'Frontend developer with 2 years of experience focusing on React, Tailwind CSS, and modern UI design.',
     totalExperienceYears: 2,
     skills: [
       { name: 'JavaScript', category: 'Languages' },
@@ -87,7 +84,45 @@ export async function seedInitialData() {
     anonymized: true,
   });
 
-  // Sample Job 1: Senior Full-Stack Engineer
+  // Sample Resume 3: Cloud & Platform DevOps Engineer (Gamma)
+  // Uses synonyms like "K8s", "Postgres", and domain affinities like "GCP"
+  const candidate3 = await Resume.create({
+    candidateName: 'Candidate Gamma (Anonymized)',
+    email: 'candidate_gamma@masked.drishti.ai',
+    phone: '***-***-****',
+    summary: 'Senior Cloud & Site Reliability Engineer with 6 years architecting high-availability infrastructure in AWS, K8s, Terraform, and CI/CD pipelines.',
+    totalExperienceYears: 6,
+    skills: [
+      { name: 'AWS', category: 'Cloud / DevOps' },
+      { name: 'K8s', category: 'Cloud / DevOps' }, // Synonym for Kubernetes
+      { name: 'Docker', category: 'Cloud / DevOps' },
+      { name: 'Terraform', category: 'Cloud / DevOps' },
+      { name: 'CI/CD', category: 'Cloud / DevOps' },
+      { name: 'Python', category: 'Languages' },
+      { name: 'Linux', category: 'Cloud / DevOps' },
+      { name: 'Postgres', category: 'Databases' }, // Synonym for PostgreSQL
+      { name: 'GCP', category: 'Cloud / DevOps' }, // Domain affinity to AWS
+    ],
+    experience: [
+      {
+        title: 'Senior Cloud DevOps Engineer',
+        company: 'ScaleOps Infrastructure',
+        durationMonths: 48,
+        description: 'Automated multi-region cluster deployments using Terraform and K8s. Configured GitHub Actions CI/CD.',
+        technologies: ['AWS', 'K8s', 'Terraform', 'CI/CD'],
+      },
+    ],
+    education: [
+      {
+        degree: 'Master of Science in Distributed Systems',
+        institution: 'Apex Institute of Technology',
+        graduationYear: 2020,
+      },
+    ],
+    anonymized: true,
+  });
+
+  // Sample Job 1: Full-Stack Software Engineer
   const job1 = await Job.create({
     title: 'Full-Stack Software Engineer',
     company: 'Drishti AI Ecosystem',
@@ -142,7 +177,7 @@ export async function seedInitialData() {
 
   return {
     message: 'Sample candidates and job postings seeded successfully.',
-    resumes: [candidate1._id, candidate2._id],
+    resumes: [candidate1._id, candidate2._id, candidate3._id],
     jobs: [job1._id, job2._id],
   };
 }

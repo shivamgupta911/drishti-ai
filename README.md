@@ -175,10 +175,20 @@ To connect persistent cloud storage via MongoDB Atlas:
 
 ---
 
-## 🗺️ Next Steps & Roadmap (Day 2+)
+## 🗺️ Project Progression & Roadmap
 
-- [ ] **Phase 1**: Authentication & Role-Based Access (Recruiter, Hiring Manager, Candidate)
-- [ ] **Phase 2**: Resume Ingestion & Structural Attribute Parsing (Skills, Experience, Education)
-- [ ] **Phase 3**: Job Description Parsing & Requirement Extraction (Must-have vs. Nice-to-have)
-- [ ] **Phase 4**: Explainable Match & Scoring Engine (Multi-dimensional attribution and skill gap insights)
-- [ ] **Phase 5**: Fairness & Bias Auditing Tools (Mitigating demographic proxies and promoting equitable evaluation)
+- [x] **Day 1**: Local Engineering Foundation (Express + Mongoose + React 19 + Tailwind, dual-tier resilient DB, health checks, git hygiene)
+- [x] **Day 2**: Core Data Models (Resume, Job, MatchResult), Extraction Parser, Explainable Matching Engine, and Ingestion APIs
+- [x] **Day 3**: Semantic Skill Synonym Resolution (e.g. K8s ↔ Kubernetes), Domain Affinity Transfer, Batch Leaderboard Ranking, Pairwise Candidate Comparison, and Compliance Audit Dossier Export
+- [ ] **Phase 4**: Production JWT Authentication & Role-Based Access Control (Recruiter, Hiring Manager, Candidate)
+- [ ] **Phase 5**: Deep Vector Embedding Integration & Enterprise HRIS Webhooks (Greenhouse, Lever)
+
+---
+
+## 🔬 Day 3 Semantic & Explainability Features
+
+- **Semantic Synonym Mapping**: Normalizes canonical terms (e.g., `K8s` -> `Kubernetes`, `Postgres` -> `PostgreSQL`, `TS` -> `TypeScript`) with 100% credit and transparent attribution.
+- **Domain Affinity Transfer**: Grants partial credit for adjacent skills in the same family (e.g., `Docker` -> `Kubernetes` [Container Ecosystem, 65% credit]; `MySQL` -> `PostgreSQL` [Relational DB, 75% credit]).
+- **Batch Leaderboard (`GET /api/matches/rank/:jobId`)**: Ranks all candidate profiles against a selected job description with cohort averages and tier classifications.
+- **Pairwise Comparison (`POST /api/matches/compare`)**: Side-by-side comparison of two candidates explaining why one candidate outranks another.
+- **Fairness & Compliance Dossier (`GET /api/matches/:id/report`)**: Exportable certification confirming demographic signals were masked and scoring was based strictly on demonstrable qualifications.
