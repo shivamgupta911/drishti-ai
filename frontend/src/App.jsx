@@ -33,6 +33,7 @@ export default function App() {
   // Data collections
   const [resumes, setResumes] = useState([]);
   const [jobs, setJobs] = useState([]);
+  const [loadingData, setLoadingData] = useState(false);
 
   // Match Studio state
   const [selectedResumeId, setSelectedResumeId] = useState('');
@@ -140,13 +141,19 @@ export default function App() {
   };
 
   const handleSeedData = async () => {
+    setLoadingData(true);
     try {
       const res = await fetch('/api/seed', { method: 'POST' });
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || data.error || 'Failed to seed sample data');
+      }
       showBanner(data.message || 'Sample candidates and job postings seeded!');
       await fetchResumesAndJobs();
     } catch (err) {
       showBanner(`Seed error: ${err.message}`);
+    } finally {
+      setLoadingData(false);
     }
   };
 
@@ -429,11 +436,12 @@ export default function App() {
           <div className="flex items-center gap-3">
             <button
               onClick={handleSeedData}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-900 border border-slate-700 hover:border-indigo-500 text-slate-300 hover:text-white text-xs transition"
+              disabled={loadingData}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-900 border border-slate-700 hover:border-indigo-500 text-slate-300 hover:text-white text-xs transition disabled:opacity-50"
               title="Populate test candidates with synonyms and jobs"
             >
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>Seed Data</span>
+              <Zap className={`w-3.5 h-3.5 text-amber-400 ${loadingData ? 'animate-pulse' : ''}`} />
+              <span>{loadingData ? 'Seeding...' : 'Seed Data'}</span>
             </button>
 
             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs">
@@ -456,10 +464,11 @@ export default function App() {
 
             <button
               onClick={() => { checkHealth(); fetchResumesAndJobs(); }}
-              className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white transition"
+              disabled={loadingData}
+              className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white transition disabled:opacity-50"
               title="Refresh status & data"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${healthStatus === 'checking' ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${healthStatus === 'checking' || loadingData ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
@@ -530,10 +539,11 @@ export default function App() {
               {resumes.length === 0 && (
                 <button
                   onClick={handleSeedData}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition self-start"
+                  disabled={loadingData}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition self-start disabled:opacity-50"
                 >
-                  <Zap className="w-4 h-4 text-amber-300" />
-                  Load Sample Data
+                  <Zap className={`w-4 h-4 text-amber-300 ${loadingData ? 'animate-pulse' : ''}`} />
+                  <span>{loadingData ? 'Loading Sample Data...' : 'Load Sample Data'}</span>
                 </button>
               )}
             </div>
