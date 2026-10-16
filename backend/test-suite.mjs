@@ -1,10 +1,13 @@
 import assert from 'assert';
 import { evaluateMatch, rankCandidatesForJob, compareTwoCandidates } from './src/services/matcher.service.js';
 import { getSynonymMatch, getDomainAffinity, evaluateSkillAgainstRequirement } from './src/services/taxonomy.service.js';
-import { parseResumeText, extractSkills, extractExperienceYears } from './src/services/parser.service.js';
+import { parseResumeText, extractSkills, extractExperienceYears, parseDocumentBuffer } from './src/services/parser.service.js';
+import { generateSalt, hashPassword, verifyPassword, generateToken, verifyToken } from './src/middleware/auth.middleware.js';
+import { computeCosineSimilarity, computeSemanticVectorMatch, tokenizeText } from './src/services/embedding.service.js';
+import { auditDisparateImpact } from './src/services/fairness.service.js';
 
 console.log('====================================================');
-console.log('DRISHTI AI - COMPREHENSIVE DAY 3 VERIFICATION SUITE');
+console.log('DRISHTI AI - COMPREHENSIVE ENTERPRISE VERIFICATION SUITE');
 console.log('====================================================\n');
 
 let passedTests = 0;
@@ -255,6 +258,125 @@ Summary: Software Engineer with 4 years of experience in JavaScript, React, and 
   assert.ok(!parsed.email.includes('john.doe@personalmail.com'));
   assert.strictEqual(parsed.phone, '***-***-****');
   assert.strictEqual(parsed.totalExperienceYears, 4);
+});
+
+// ---------------------------------------------------------
+// 7. Semantic Vector & TF-IDF Cosine Similarity Tests
+// ---------------------------------------------------------
+runTest('Cosine similarity between identical vectors is exactly 1.0', () => {
+  const vecA = { react: 1.5, nodejs: 2.0, aws: 1.2 };
+  const similarity = computeCosineSimilarity(vecA, vecA);
+  assert.strictEqual(Math.round(similarity * 1000) / 1000, 1.0);
+});
+
+runTest('Cosine similarity between completely disjoint vectors is 0.0', () => {
+  const vecA = { react: 1.5, nodejs: 2.0 };
+  const vecB = { python: 1.8, django: 2.2 };
+  const similarity = computeCosineSimilarity(vecA, vecB);
+  assert.strictEqual(similarity, 0.0);
+});
+
+runTest('Text tokenizer preserves tech acronyms and removes stopwords', () => {
+  const text = 'A senior developer working with Node.js, C++, and CI/CD pipelines in AWS.';
+  const tokens = tokenizeText(text);
+  assert.ok(tokens.includes('nodejs'));
+  assert.ok(tokens.includes('cpp'));
+  assert.ok(tokens.includes('cicd'));
+  assert.ok(tokens.includes('aws'));
+  assert.ok(!tokens.includes('with'));
+  assert.ok(!tokens.includes('in'));
+});
+
+runTest('Semantic vector engine computes cosine match and identifies top shared terms', () => {
+  const resume = {
+    summary: 'Cloud infrastructure architect focused on Kubernetes, Docker, and automation pipelines.',
+    skills: [{ name: 'Kubernetes' }, { name: 'Docker' }, { name: 'Terraform' }],
+  };
+  const job = {
+    title: 'Cloud DevOps Architect',
+    description: 'Looking for an engineer to manage Kubernetes clusters and automated Docker pipelines with Terraform.',
+  };
+  const match = computeSemanticVectorMatch(resume, job);
+  assert.ok(match.rawCosine > 0.5);
+  assert.ok(match.topSharedTerms.includes('kubernetes'));
+  assert.ok(match.topSharedTerms.includes('docker'));
+});
+
+// ---------------------------------------------------------
+// 8. EEOC 4/5ths Rule & Algorithmic Fairness Tests
+// ---------------------------------------------------------
+runTest('EEOC 4/5ths calculator confirms compliance when pass rates are equitable', () => {
+  const cohort = [
+    { totalExperienceYears: 1, overallScore: 80 },
+    { totalExperienceYears: 2, overallScore: 75 },
+    { totalExperienceYears: 4, overallScore: 85 },
+    { totalExperienceYears: 5, overallScore: 78 },
+    { totalExperienceYears: 7, overallScore: 90 },
+    { totalExperienceYears: 8, overallScore: 88 },
+  ];
+  const audit = auditDisparateImpact(cohort, 65);
+  assert.strictEqual(audit.adverseImpactDetected, false);
+  assert.strictEqual(audit.status, 'compliant');
+  assert.strictEqual(audit.overallPassRate, 100);
+});
+
+runTest('EEOC 4/5ths calculator detects adverse impact when a cohort falls below 80% threshold', () => {
+  const cohort = [
+    { totalExperienceYears: 1, overallScore: 40 }, // Junior fail
+    { totalExperienceYears: 2, overallScore: 45 }, // Junior fail
+    { totalExperienceYears: 4, overallScore: 85 }, // Mid pass
+    { totalExperienceYears: 5, overallScore: 80 }, // Mid pass
+    { totalExperienceYears: 7, overallScore: 90 }, // Senior pass
+    { totalExperienceYears: 8, overallScore: 92 }, // Senior pass
+  ];
+  const audit = auditDisparateImpact(cohort, 65);
+  assert.strictEqual(audit.adverseImpactDetected, true);
+  assert.strictEqual(audit.status, 'potential_adverse_impact');
+});
+
+// ---------------------------------------------------------
+// 9. Enterprise RBAC & Cryptographic Security Tests
+// ---------------------------------------------------------
+runTest('Password hashing produces secure PBKDF2 hash verifiable with salt', () => {
+  const salt = generateSalt();
+  const password = 'SuperSecretRecruiterPassword123!';
+  const hash = hashPassword(password, salt);
+
+  assert.ok(hash.length > 32);
+  assert.strictEqual(verifyPassword(password, salt, hash), true);
+  assert.strictEqual(verifyPassword('WrongPassword!', salt, hash), false);
+});
+
+runTest('JWT token generator produces valid verifiable signed token with payload', () => {
+  const payload = { id: 'u123', email: 'recruiter@drishti.ai', role: 'recruiter' };
+  const token = generateToken(payload);
+  const decoded = verifyToken(token);
+
+  assert.strictEqual(decoded.id, 'u123');
+  assert.strictEqual(decoded.email, 'recruiter@drishti.ai');
+  assert.strictEqual(decoded.role, 'recruiter');
+  assert.ok(decoded.exp > Date.now());
+});
+
+runTest('JWT verifier rejects tampered token signature', () => {
+  const token = generateToken({ id: 'u123', role: 'candidate' });
+  const tamperedToken = token.slice(0, -5) + 'AAAAA';
+  assert.throws(() => verifyToken(tamperedToken), /signature/i);
+});
+
+// ---------------------------------------------------------
+// 10. Multi-Format Document Ingestion Tests
+// ---------------------------------------------------------
+runTest('Buffer parser parses text document into structured candidate profile', async () => {
+  const textBuffer = Buffer.from('Jane Architect\nEmail: jane@enterprise.com\nExpert in React, Python, and AWS with 6 years experience.');
+  const parsed = await parseDocumentBuffer(textBuffer, 'text/plain', { anonymize: true });
+
+  assert.strictEqual(parsed.anonymized, true);
+  assert.strictEqual(parsed.totalExperienceYears, 6);
+  const skillNames = parsed.skills.map(s => s.name);
+  assert.ok(skillNames.includes('React'));
+  assert.ok(skillNames.includes('Python'));
+  assert.ok(skillNames.includes('AWS'));
 });
 
 console.log('\n====================================================');

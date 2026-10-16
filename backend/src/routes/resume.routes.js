@@ -1,17 +1,14 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse');
 import Resume from '../models/Resume.js';
-import { parseResumeText } from '../services/parser.service.js';
+import { parseResumeText, parseDocumentBuffer } from '../services/parser.service.js';
 
 const router = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/pdf' || file.mimetype === 'text/plain') {
+    if (file.mimetype === 'application/pdf' || file.mimetype === 'text/plain' || file.originalname.match(/\.(pdf|txt)$/i)) {
       cb(null, true);
     } else {
       cb(new Error('Only PDF and TXT files are supported for resume ingestion.'));
@@ -65,16 +62,8 @@ router.post('/upload', upload.single('resumeFile'), async (req, res, next) => {
       return res.status(400).json({ error: 'Please upload a PDF or TXT resume file.' });
     }
 
-    let extractedText = '';
-    if (req.file.mimetype === 'application/pdf') {
-      const parsedPdf = await pdfParse(req.file.buffer);
-      extractedText = parsedPdf.text || '';
-    } else {
-      extractedText = req.file.buffer.toString('utf-8');
-    }
-
     const anonymize = req.body.anonymize !== 'false';
-    const parsedAttributes = parseResumeText(extractedText, { anonymize });
+    const parsedAttributes = await parseDocumentBuffer(req.file.buffer, req.file.mimetype, { anonymize });
 
     const resume = await Resume.create(parsedAttributes);
 

@@ -26,7 +26,10 @@ const matchResultSchema = new mongoose.Schema(
       skillsMatchScore: { type: Number, required: true },
       experienceMatchScore: { type: Number, required: true },
       preferredSkillsBonus: { type: Number, default: 0 },
+      semanticVectorScore: { type: Number, default: 0 },
     },
+    vectorCosineScore: { type: Number, default: 0 },
+    vectorKeyTerms: [{ type: String }],
     matchingSkills: [{ type: String }],
     exactMatches: [{ type: String }],
     synonymMatches: [

@@ -4,6 +4,8 @@ import healthRoutes from './routes/health.routes.js';
 import resumeRoutes from './routes/resume.routes.js';
 import jobRoutes from './routes/job.routes.js';
 import matchRoutes from './routes/match.routes.js';
+import authRoutes from './routes/auth.routes.js';
+import integrationRoutes from './routes/integration.routes.js';
 import { seedInitialData } from './config/seed.js';
 
 const app = express();
@@ -22,9 +24,11 @@ app.use(express.urlencoded({ extended: true }));
 
 // API Routes
 app.use('/api', healthRoutes);
+app.use('/api/auth', authRoutes);
 app.use('/api/resumes', resumeRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/matches', matchRoutes);
+app.use('/api/integrations', integrationRoutes);
 
 // Seed sample data helper
 app.post('/api/seed', async (req, res, next) => {

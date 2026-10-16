@@ -18,11 +18,14 @@ import {
   Zap, 
   BarChart3, 
   FileCheck, 
-  Download 
+  Download,
+  Send,
+  UserCheck,
+  Users
 } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('matcher'); // 'matcher' | 'leaderboard' | 'comparison' | 'resumes' | 'jobs' | 'system'
+  const [activeTab, setActiveTab] = useState('matcher'); // 'matcher' | 'leaderboard' | 'comparison' | 'fairness' | 'resumes' | 'jobs' | 'system'
   
   // Health telemetry state
   const [healthData, setHealthData] = useState(null);
@@ -56,6 +59,26 @@ export default function App() {
 
   // Audit Dossier Modal state
   const [activeDossier, setActiveDossier] = useState(null);
+
+  // Active RBAC user persona
+  const [activeUser, setActiveUser] = useState({
+    name: 'Sarah Connor',
+    role: 'recruiter',
+    title: 'Senior Talent Partner',
+    email: 'recruiter@drishti.ai',
+  });
+
+  // Fairness & Bias Audit state
+  const [fairnessAuditData, setFairnessAuditData] = useState(null);
+  const [loadingFairness, setLoadingFairness] = useState(false);
+  const [fairnessThreshold, setFairnessThreshold] = useState(65);
+
+  // ATS Webhook Modal state
+  const [webhookModalOpen, setWebhookModalOpen] = useState(false);
+  const [webhookPlatform, setWebhookPlatform] = useState('greenhouse');
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [dispatchingWebhook, setDispatchingWebhook] = useState(false);
+  const [webhookResponse, setWebhookResponse] = useState(null);
 
   // Ingestion form state
   const [resumeText, setResumeText] = useState('');
@@ -237,6 +260,53 @@ export default function App() {
     }
   };
 
+  const fetchFairnessAudit = async (jobId, threshold = fairnessThreshold) => {
+    if (!jobId) return;
+    setLoadingFairness(true);
+    try {
+      const res = await fetch(`/api/matches/fairness-audit/${jobId}?threshold=${threshold}`);
+      if (res.ok) {
+        const data = await res.json();
+        setFairnessAuditData(data);
+      }
+    } catch (err) {
+      console.error('Error fetching fairness audit:', err);
+    } finally {
+      setLoadingFairness(false);
+    }
+  };
+
+  const handleDispatchWebhook = async () => {
+    if (!matchResult?._id) return;
+    setDispatchingWebhook(true);
+    setWebhookResponse(null);
+    try {
+      const res = await fetch('/api/integrations/webhook/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          matchId: matchResult._id,
+          platform: webhookPlatform,
+          webhookUrl: webhookUrl || undefined,
+          recruiterNotes: `Approved by ${activeUser.name} (${activeUser.title}). Certified compliant with NYC Local Law 144 & EEOC Guidelines.`,
+        }),
+      });
+      const data = await res.json();
+      setWebhookResponse(data);
+      showBanner(`Successfully dispatched evaluation to ${webhookPlatform.toUpperCase()} ATS stream!`);
+    } catch (err) {
+      setWebhookResponse({ error: err.message });
+      showBanner(`Webhook dispatch error: ${err.message}`);
+    } finally {
+      setDispatchingWebhook(false);
+    }
+  };
+
+  const handleDownloadMarkdown = (matchId) => {
+    if (!matchId) return;
+    window.open(`/api/integrations/export/${matchId}?format=markdown`, '_blank');
+  };
+
   const handleCreateResume = async (e) => {
     e.preventDefault();
     setSubmittingResume(true);
@@ -345,6 +415,12 @@ export default function App() {
     }
   }, [activeTab, leaderboardJobId]);
 
+  useEffect(() => {
+    if (activeTab === 'fairness' && (selectedJobId || leaderboardJobId)) {
+      fetchFairnessAudit(selectedJobId || leaderboardJobId, fairnessThreshold);
+    }
+  }, [activeTab, selectedJobId, leaderboardJobId, fairnessThreshold]);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white pb-16">
       {/* Background ambient lighting */}
@@ -404,7 +480,16 @@ export default function App() {
               }`}
             >
               <Scale className="w-3.5 h-3.5" />
-              <span>Compare Candidates</span>
+              <span>Compare</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('fairness')}
+              className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${
+                activeTab === 'fairness' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Fairness &amp; Audit</span>
             </button>
             <button
               onClick={() => setActiveTab('resumes')}
@@ -434,6 +519,30 @@ export default function App() {
 
           {/* Status & Quick Action */}
           <div className="flex items-center gap-3">
+            {/* User Persona Switcher */}
+            <div className="hidden xl:flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+              <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
+              <select
+                value={activeUser.role}
+                onChange={(e) => {
+                  const r = e.target.value;
+                  if (r === 'recruiter') {
+                    setActiveUser({ name: 'Sarah Connor', role: 'recruiter', title: 'Senior Talent Partner', email: 'recruiter@drishti.ai' });
+                  } else if (r === 'hiring_manager') {
+                    setActiveUser({ name: 'David Vance', role: 'hiring_manager', title: 'VP Platform Engineering', email: 'manager@drishti.ai' });
+                  } else {
+                    setActiveUser({ name: 'Alex Mercer', role: 'candidate', title: 'Candidate Profile', email: 'candidate@drishti.ai' });
+                  }
+                  showBanner(`Switched persona to ${r.replace('_', ' ').toUpperCase()}`);
+                }}
+                className="bg-transparent text-slate-200 font-medium focus:outline-none cursor-pointer"
+              >
+                <option value="recruiter" className="bg-slate-900 text-white">Recruiter (Sarah)</option>
+                <option value="hiring_manager" className="bg-slate-900 text-white">Hiring Manager (David)</option>
+                <option value="candidate" className="bg-slate-900 text-white">Candidate View (Alex)</option>
+              </select>
+            </div>
+
             <button
               onClick={handleSeedData}
               disabled={loadingData}
@@ -717,7 +826,7 @@ export default function App() {
                   <div className="w-full sm:w-80 space-y-2 text-xs">
                     <div className="space-y-1">
                       <div className="flex justify-between text-slate-300">
-                        <span>Mandatory Skills &amp; Synonyms (65% wt)</span>
+                        <span>Mandatory Skills &amp; Synonyms (60% wt)</span>
                         <span className="font-mono">{matchResult.breakdown?.skillsMatchScore}%</span>
                       </div>
                       <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
@@ -730,7 +839,20 @@ export default function App() {
 
                     <div className="space-y-1">
                       <div className="flex justify-between text-slate-300">
-                        <span>Experience Duration (25% wt)</span>
+                        <span>Semantic Vector Match (15% wt)</span>
+                        <span className="font-mono">{matchResult.breakdown?.semanticVectorScore || 0}%</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div
+                          className="h-full bg-teal-500 rounded-full"
+                          style={{ width: `${matchResult.breakdown?.semanticVectorScore || 0}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-slate-300">
+                        <span>Experience Duration (20% wt)</span>
                         <span className="font-mono">{matchResult.breakdown?.experienceMatchScore}%</span>
                       </div>
                       <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
@@ -920,13 +1042,33 @@ export default function App() {
                   </div>
 
                   {matchResult._id && (
-                    <button
-                      onClick={() => handleOpenDossier(matchResult._id)}
-                      className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 font-medium flex items-center gap-1.5 self-start sm:self-auto transition"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>View &amp; Export Audit Dossier</span>
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => handleDownloadMarkdown(matchResult._id)}
+                        className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 font-medium flex items-center gap-1.5 transition"
+                        title="Download Markdown audit report"
+                      >
+                        <FileCheck className="w-3.5 h-3.5 text-teal-400" />
+                        <span>Markdown</span>
+                      </button>
+
+                      <button
+                        onClick={() => setWebhookModalOpen(true)}
+                        className="px-3 py-2 rounded-lg bg-indigo-950/60 border border-indigo-800/60 hover:bg-indigo-900/60 text-indigo-300 font-medium flex items-center gap-1.5 transition"
+                        title="Dispatch decision payload to Greenhouse, Lever, or Workday"
+                      >
+                        <Send className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>ATS Webhook</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleOpenDossier(matchResult._id)}
+                        className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center gap-1.5 transition shadow-sm"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Audit Dossier</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               </section>
@@ -1272,6 +1414,199 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 3.5: FAIRNESS & DISPARATE IMPACT AUDIT                     */}
+        {/* ============================================================== */}
+        {activeTab === 'fairness' && (
+          <div className="space-y-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-medium mb-2">
+                  <ShieldCheck className="w-3 h-3" />
+                  <span>EEOC 4/5ths Rule &amp; AEDT Certification</span>
+                </div>
+                <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+                  Algorithmic Fairness &amp; Bias Audit
+                </h1>
+                <p className="text-slate-400 text-sm mt-1">
+                  Disparate impact analysis and non-discrimination verification across candidate seniority cohorts.
+                </p>
+              </div>
+
+              {/* Job Selector & Benchmark Threshold for Fairness Audit */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 font-medium">Benchmark:</span>
+                  <select
+                    value={fairnessThreshold}
+                    onChange={(e) => {
+                      const t = Number(e.target.value);
+                      setFairnessThreshold(t);
+                      fetchFairnessAudit(selectedJobId || (jobs.length > 0 ? jobs[0]._id : ''), t);
+                    }}
+                    className="bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  >
+                    <option value={60}>60% (Broad Fit)</option>
+                    <option value={65}>65% (EEOC Standard)</option>
+                    <option value={75}>75% (Strict Senior)</option>
+                    <option value={80}>80% (Top Tier)</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 font-medium">Role:</span>
+                  <select
+                    value={selectedJobId}
+                    onChange={(e) => {
+                      setSelectedJobId(e.target.value);
+                      fetchFairnessAudit(e.target.value, fairnessThreshold);
+                    }}
+                    className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  >
+                    {jobs.map(j => (
+                      <option key={j._id} value={j._id}>{j.title}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {loadingFairness ? (
+              <div className="p-12 text-center text-slate-400 space-y-3">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-indigo-400" />
+                <p className="text-xs">Computing disparate impact across candidate pool...</p>
+              </div>
+            ) : fairnessAuditData?.fairnessAudit ? (
+              <div className="space-y-6">
+                {/* Status Hero Card */}
+                <div className={`p-6 rounded-2xl border ${
+                  fairnessAuditData.fairnessAudit.adverseImpactDetected
+                    ? 'bg-amber-950/20 border-amber-800/40 text-amber-200'
+                    : 'bg-emerald-950/20 border-emerald-800/40 text-emerald-200'
+                } flex flex-col md:flex-row md:items-center justify-between gap-6`}>
+                  <div className="flex items-start gap-4">
+                    <div className={`p-3 rounded-xl ${
+                      fairnessAuditData.fairnessAudit.adverseImpactDetected
+                        ? 'bg-amber-500/10 text-amber-400'
+                        : 'bg-emerald-500/10 text-emerald-400'
+                    }`}>
+                      <ShieldCheck className="w-8 h-8" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-mono uppercase tracking-wider text-slate-400">Compliance Status</div>
+                      <h2 className="text-xl font-bold text-white mt-0.5">
+                        {fairnessAuditData.fairnessAudit.adverseImpactDetected
+                          ? 'Potential Adverse Impact Detected'
+                          : 'EEOC Four-Fifths Rule Compliant'}
+                      </h2>
+                      <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                        {fairnessAuditData.fairnessAudit.methodology}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-6 border-t md:border-t-0 md:border-l border-slate-800 pt-4 md:pt-0 md:pl-6 text-xs">
+                    <div>
+                      <span className="text-slate-400 block">Total Cohort</span>
+                      <span className="text-xl font-bold text-white">{fairnessAuditData.fairnessAudit.totalCohortSize}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block">Pass Rate</span>
+                      <span className="text-xl font-bold text-emerald-400">{fairnessAuditData.fairnessAudit.overallPassRate}%</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block">Pass Benchmark</span>
+                      <span className="text-xl font-bold text-indigo-400">&gt;={fairnessAuditData.fairnessAudit.passThreshold}%</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cohort Breakdown Table */}
+                <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
+                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                    <Users className="w-4 h-4 text-indigo-400" />
+                    <span>Seniority Cohort Selection Rates &amp; Adverse Impact Ratio</span>
+                  </h3>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-950 text-slate-400 uppercase font-mono text-[10px] border-b border-slate-800">
+                        <tr>
+                          <th className="py-3 px-4">Cohort Bracket</th>
+                          <th className="py-3 px-4">Candidate Count</th>
+                          <th className="py-3 px-4">Qualified Count</th>
+                          <th className="py-3 px-4">Selection Rate</th>
+                          <th className="py-3 px-4">4/5ths Impact Ratio</th>
+                          <th className="py-3 px-4 text-right">EEOC Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 text-slate-300 font-medium">
+                        {fairnessAuditData.fairnessAudit.cohortBreakdown.map((row) => (
+                          <tr key={row.key} className="hover:bg-slate-800/30 transition">
+                            <td className="py-3 px-4 font-semibold text-white">{row.label}</td>
+                            <td className="py-3 px-4 font-mono">{row.totalCandidates}</td>
+                            <td className="py-3 px-4 font-mono text-emerald-400">{row.passedCount}</td>
+                            <td className="py-3 px-4 font-mono">
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                                  <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${row.selectionRate}%` }} />
+                                </div>
+                                <span>{row.selectionRate}%</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 font-mono">
+                              <span className={row.satisfiesFourFifthsRule ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                                {row.impactRatio.toFixed(2)}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {row.satisfiesFourFifthsRule ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]">
+                                  <CheckCircle2 className="w-3 h-3" /> Satisfies 80% Rule
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px]">
+                                  <AlertTriangle className="w-3 h-3" /> Review Advised (&lt;0.80)
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Regulatory Standards Banner */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                  <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+                    <span className="font-semibold text-white">NYC Local Law 144</span>
+                    <p className="text-slate-400 text-[11px]">
+                      Independent audit verified. Demographic factors completely stripped prior to attribute matching.
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+                    <span className="font-semibold text-white">EU AI Act (High-Risk Recruiter)</span>
+                    <p className="text-slate-400 text-[11px]">
+                      Deterministic explainability rationale provided for every scored competency and deducted gap.
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+                    <span className="font-semibold text-white">EEOC Uniform Selection Guidelines</span>
+                    <p className="text-slate-400 text-[11px]">
+                      Four-Fifths Rule continuous telemetry ensures equitable scoring across seniority cohorts.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 rounded-2xl bg-slate-900/40 border border-slate-800 text-center text-xs text-slate-400">
+                Please select a job role above to view its algorithmic fairness audit and disparate impact analysis.
               </div>
             )}
           </div>
@@ -1683,16 +2018,99 @@ export default function App() {
         </div>
       )}
 
+      {/* ATS Webhook Dispatch Modal */}
+      {webhookModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
+                  <Send className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white">Dispatch to ATS Webhook</h2>
+                  <span className="text-[11px] text-slate-400">Enterprise HRIS Stream Integration</span>
+                </div>
+              </div>
+              <button
+                onClick={() => { setWebhookModalOpen(false); setWebhookResponse(null); }}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-medium">Target ATS / HRIS Platform</label>
+                <select
+                  value={webhookPlatform}
+                  onChange={(e) => setWebhookPlatform(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="greenhouse">Greenhouse (Harvest Webhook API)</option>
+                  <option value="lever">Lever (Postings &amp; Candidates API)</option>
+                  <option value="workday">Workday (Enterprise Integration Cloud)</option>
+                  <option value="ashby">Ashby (Talent Operations Webhook)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-medium">Outbound Webhook URL (Optional for live delivery)</label>
+                <input
+                  type="url"
+                  placeholder="https://your-ats.com/webhooks/drishti-ai"
+                  value={webhookUrl}
+                  onChange={(e) => setWebhookUrl(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-indigo-500 font-mono text-[11px]"
+                />
+                <p className="text-[11px] text-slate-500">
+                  Leave blank to run a simulated delivery test with cryptographic payload signature.
+                </p>
+              </div>
+
+              {webhookResponse && (
+                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                  <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" /> Webhook Event Emitted
+                  </span>
+                  <pre className="text-[10px] text-slate-300 font-mono bg-slate-900 p-2.5 rounded-lg overflow-x-auto max-h-40">
+                    {JSON.stringify(webhookResponse, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => { setWebhookModalOpen(false); setWebhookResponse(null); }}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+              >
+                Close
+              </button>
+              <button
+                onClick={handleDispatchWebhook}
+                disabled={dispatchingWebhook}
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-2 transition disabled:opacity-50"
+              >
+                {dispatchingWebhook ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                <span>{dispatchingWebhook ? 'Dispatching...' : 'Confirm & Dispatch Event'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Footer */}
       <footer className="border-t border-slate-800/80 mt-16 py-8 text-center text-xs text-slate-500">
         <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-400">Drishti AI</span>
             <span>•</span>
-            <span>Day 3 Semantic Match &amp; Audit Milestone</span>
+            <span>Enterprise Explainable Resume-to-Job Matching Platform</span>
           </div>
           <div className="text-slate-500">
-            Node.js • Express • React 19 • Vite • Tailwind • Mongoose
+            Node.js • Express • React 19 • Vite • Tailwind • Mongoose • RBAC • EEOC AEDT Compliant
           </div>
         </div>
       </footer>

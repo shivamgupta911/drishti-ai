@@ -1,4 +1,5 @@
 import { evaluateSkillAgainstRequirement } from './taxonomy.service.js';
+import { computeSemanticVectorMatch } from './embedding.service.js';
 
 /**
  * Drishti AI - Explainable Matching Engine (Day 3 Edition)
@@ -105,13 +106,24 @@ export function evaluateMatch(resume, job) {
     experienceMatchScore = Math.max(Math.round((candidateYears / requiredYears) * 100), 20);
   }
 
-  // 4. Overall Weighted Score (65% Skills, 25% Experience, + up to 10% Preferred Bonus)
+  // 4. Semantic Vector Embedding Cosine Similarity
+  const vectorMatch = computeSemanticVectorMatch(resume, job);
+  const semanticVectorScore = vectorMatch.vectorSimilarityScore;
+
+  // 5. Overall Weighted Score:
+  // 60% Mandatory Skills (Exact + Semantic Synonym + Domain Affinity)
+  // 15% Semantic Vector Similarity (broader contextual role alignment)
+  // 20% Experience Tenure Threshold
+  // + up to 10% Preferred Bonus
   const rawOverall = Math.round(
-    skillsMatchScore * 0.65 + experienceMatchScore * 0.25 + preferredSkillsBonus
+    skillsMatchScore * 0.60 +
+    semanticVectorScore * 0.15 +
+    experienceMatchScore * 0.20 +
+    preferredSkillsBonus
   );
   const overallScore = Math.min(Math.max(rawOverall, 0), 100);
 
-  // 5. Plain-English Explainability Narrative
+  // 6. Plain-English Explainability Narrative
   const strengths = [];
   const gaps = [];
   const scoringRationale = [];
@@ -135,6 +147,12 @@ export function evaluateMatch(resume, job) {
     });
   }
 
+  // Vector Cosine Similarity
+  if (vectorMatch.topSharedTerms.length > 0) {
+    strengths.push(`Contextual Vector Alignment: Semantic vocabulary overlap in [${vectorMatch.topSharedTerms.slice(0, 4).join(', ')}] (${semanticVectorScore}% cosine similarity).`);
+    scoringRationale.push(`+${Math.round(semanticVectorScore * 0.15)} pts from TF-IDF vector embedding cosine similarity.`);
+  }
+
   // Preferred Bonus
   if (matchedPreferredSkills.length > 0) {
     strengths.push(`Possesses ${matchedPreferredSkills.length} bonus preferred skills: ${matchedPreferredSkills.join(', ')}.`);
@@ -144,20 +162,20 @@ export function evaluateMatch(resume, job) {
   // Missing Skills
   if (missingRequiredSkills.length > 0) {
     gaps.push(`Missing ${missingRequiredSkills.length} mandatory qualifications: ${missingRequiredSkills.join(', ')}.`);
-    scoringRationale.push(`-${Math.round((100 - skillsMatchScore) * 0.65)} pts penalty for missing core skills.`);
+    scoringRationale.push(`-${Math.round((100 - skillsMatchScore) * 0.60)} pts penalty for missing core skills.`);
   }
 
   // Scoring Rationale
-  scoringRationale.push(`+${Math.round(skillsMatchScore * 0.65)} pts from required skill & semantic affinity alignment.`);
+  scoringRationale.push(`+${Math.round(skillsMatchScore * 0.60)} pts from required skill & semantic affinity alignment.`);
   if (experienceStatus === 'exceeds') {
     strengths.push(`Exceeds minimum experience requirement by ${differenceYears} year(s) (${candidateYears} yrs vs ${requiredYears} required).`);
-    scoringRationale.push(`+25 pts full credit for meeting/exceeding seniority threshold.`);
+    scoringRationale.push(`+20 pts full credit for meeting/exceeding seniority threshold.`);
   } else if (experienceStatus === 'meets') {
     strengths.push(`Satisfies minimum experience requirement of ${requiredYears} year(s).`);
-    scoringRationale.push(`+25 pts full credit for meeting seniority threshold.`);
+    scoringRationale.push(`+20 pts full credit for meeting seniority threshold.`);
   } else {
     gaps.push(`Falls short of minimum experience by ${Math.abs(differenceYears)} year(s) (${candidateYears} yrs vs ${requiredYears} required).`);
-    scoringRationale.push(`+${Math.round(experienceMatchScore * 0.25)} pts partial credit for ${candidateYears}/${requiredYears} experience years.`);
+    scoringRationale.push(`+${Math.round(experienceMatchScore * 0.20)} pts partial credit for ${candidateYears}/${requiredYears} experience years.`);
   }
 
   // Summary Tier
@@ -165,13 +183,13 @@ export function evaluateMatch(resume, job) {
   let summary = '';
   if (overallScore >= 80) {
     tier = 'Tier 1: High Fit';
-    summary = `Strong Match (${overallScore}%): Candidate demonstrates exceptional alignment with core role competencies and experience expectations.`;
+    summary = `Strong Match (${overallScore}%): Candidate demonstrates exceptional alignment with core role competencies, semantic context, and experience expectations.`;
   } else if (overallScore >= 60) {
     tier = 'Tier 2: Moderate Fit';
     summary = `Moderate Match (${overallScore}%): Candidate satisfies major requirements with minor skill or experience gaps that could be bridged with onboarding.`;
   } else {
     tier = 'Tier 3: Low Fit';
-    summary = `Low Match (${overallScore}%): Significant gaps identified in mandatory skills or minimum required professional tenure.`;
+    summary = `Low Match (${overallScore}%): Significant gaps identified in mandatory skills, semantic context, or minimum required professional tenure.`;
   }
 
   return {
@@ -181,7 +199,10 @@ export function evaluateMatch(resume, job) {
       skillsMatchScore,
       experienceMatchScore,
       preferredSkillsBonus,
+      semanticVectorScore,
     },
+    vectorCosineScore: vectorMatch.rawCosine,
+    vectorKeyTerms: vectorMatch.topSharedTerms,
     matchingSkills: [...exactMatches, ...synonymMatches.map(s => s.targetTerm)],
     exactMatches,
     synonymMatches,
@@ -203,7 +224,7 @@ export function evaluateMatch(resume, job) {
       fairnessAudit: {
         isAnonymizedEvaluation: Boolean(resume.anonymized),
         demographicSignalsIgnored: true,
-        evaluationBasis: 'Strictly evaluated on demonstrable skills overlap, semantic taxonomy mapping, and documented duration of experience.',
+        evaluationBasis: 'Strictly evaluated on demonstrable skills overlap, semantic taxonomy mapping, TF-IDF vector embeddings, and documented tenure duration.',
       },
     },
   };

@@ -1,10 +1,44 @@
 import Resume from '../models/Resume.js';
 import Job from '../models/Job.js';
+import User from '../models/User.js';
+import { generateSalt, hashPassword } from '../middleware/auth.middleware.js';
 
 export async function seedInitialData() {
   // Always clear and seed fresh rich dataset for Day 3 verification
   await Resume.deleteMany({});
   await Job.deleteMany({});
+  await User.deleteMany({});
+
+  // Seed RBAC Users
+  const recSalt = generateSalt();
+  const recruiter = await User.create({
+    name: 'Sarah Connor (Senior Talent Partner)',
+    email: 'recruiter@drishti.ai',
+    salt: recSalt,
+    passwordHash: hashPassword('Recruiter@123', recSalt),
+    role: 'recruiter',
+    organization: 'Nexus Talent Solutions',
+  });
+
+  const mgrSalt = generateSalt();
+  const manager = await User.create({
+    name: 'David Vance (VP of Platform Engineering)',
+    email: 'manager@drishti.ai',
+    salt: mgrSalt,
+    passwordHash: hashPassword('Manager@123', mgrSalt),
+    role: 'hiring_manager',
+    organization: 'Drishti AI Ecosystem',
+  });
+
+  const candSalt = generateSalt();
+  const candidateUser = await User.create({
+    name: 'Alex Mercer (Candidate)',
+    email: 'candidate@drishti.ai',
+    salt: candSalt,
+    passwordHash: hashPassword('Candidate@123', candSalt),
+    role: 'candidate',
+    organization: 'Open Talent Community',
+  });
 
   // Sample Resume 1: Full-Stack Engineer (Alpha)
   const candidate1 = await Resume.create({
@@ -176,8 +210,9 @@ export async function seedInitialData() {
   });
 
   return {
-    message: 'Sample candidates and job postings seeded successfully.',
+    message: 'Sample candidates, job postings, and RBAC users seeded successfully.',
     resumes: [candidate1._id, candidate2._id, candidate3._id],
     jobs: [job1._id, job2._id],
+    users: [recruiter._id, manager._id, candidateUser._id],
   };
 }

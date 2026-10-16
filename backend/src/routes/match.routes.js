@@ -4,6 +4,7 @@ import Job from '../models/Job.js';
 import MatchResult from '../models/MatchResult.js';
 import { evaluateMatch, rankCandidatesForJob, compareTwoCandidates } from '../services/matcher.service.js';
 import { parseResumeText, extractSkills, extractExperienceYears } from '../services/parser.service.js';
+import { auditDisparateImpact } from '../services/fairness.service.js';
 
 const router = Router();
 
@@ -230,6 +231,43 @@ router.get('/:id', async (req, res, next) => {
     }
 
     res.status(200).json({ success: true, data: match });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/matches/fairness-audit/:jobId
+ * Calculate EEOC 4/5ths disparate impact and fairness audit across candidate pool for a role
+ */
+router.get('/fairness-audit/:jobId', async (req, res, next) => {
+  try {
+    const job = await Job.findById(req.params.jobId);
+    if (!job) {
+      return res.status(404).json({ error: 'Job posting not found.' });
+    }
+
+    const resumes = await Resume.find();
+    if (resumes.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No candidates available in cohort for audit.',
+        cohortSize: 0,
+      });
+    }
+
+    const ranking = rankCandidatesForJob(resumes, job);
+    const passThreshold = req.query.threshold ? Number(req.query.threshold) : 65;
+    const fairnessAudit = auditDisparateImpact(ranking.leaderboard, passThreshold);
+
+    res.status(200).json({
+      success: true,
+      jobId: job._id,
+      jobTitle: job.title,
+      department: job.department,
+      cohortSize: resumes.length,
+      fairnessAudit,
+    });
   } catch (error) {
     next(error);
   }

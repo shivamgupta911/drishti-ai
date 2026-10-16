@@ -1,6 +1,8 @@
+import { PDFParse } from 'pdf-parse';
+
 /**
  * Drishti AI - Explainable Resume & Document Parser
- * Extracts structured skills, experience indicators, and education attributes from raw text.
+ * Extracts structured skills, experience indicators, and education attributes from raw text and PDF documents.
  */
 
 // Comprehensive skills taxonomy across core software, cloud, and engineering domains
@@ -156,4 +158,25 @@ export function parseResumeText(rawText, options = { anonymize: true }) {
     rawText,
     anonymized: options.anonymize,
   };
+}
+
+/**
+ * Parses binary or text document buffer (PDF, TXT, JSON)
+ */
+export async function parseDocumentBuffer(buffer, mimeType = 'text/plain', options = { anonymize: true }) {
+  let text = '';
+  if (mimeType === 'application/pdf' || (buffer && buffer.slice(0, 4).toString() === '%PDF')) {
+    try {
+      const parser = new PDFParse({ data: buffer });
+      const textResult = await parser.getText();
+      text = textResult.text || '';
+    } catch (pdfErr) {
+      // Graceful fallback to buffer string extraction
+      text = buffer.toString('utf8').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ' ');
+    }
+  } else {
+    text = buffer.toString('utf8');
+  }
+
+  return parseResumeText(text, options);
 }

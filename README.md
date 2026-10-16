@@ -180,15 +180,17 @@ To connect persistent cloud storage via MongoDB Atlas:
 - [x] **Day 1**: Local Engineering Foundation (Express + Mongoose + React 19 + Tailwind, dual-tier resilient DB, health checks, git hygiene)
 - [x] **Day 2**: Core Data Models (Resume, Job, MatchResult), Extraction Parser, Explainable Matching Engine, and Ingestion APIs
 - [x] **Day 3**: Semantic Skill Synonym Resolution (e.g. K8s ↔ Kubernetes), Domain Affinity Transfer, Batch Leaderboard Ranking, Pairwise Candidate Comparison, and Compliance Audit Dossier Export
-- [ ] **Phase 4**: Production JWT Authentication & Role-Based Access Control (Recruiter, Hiring Manager, Candidate)
-- [ ] **Phase 5**: Deep Vector Embedding Integration & Enterprise HRIS Webhooks (Greenhouse, Lever)
+- [x] **Phase 4**: Enterprise RBAC & Cryptographic Authentication (Recruiter, Hiring Manager, Candidate roles with PBKDF2 & JWT tokens)
+- [x] **Phase 5**: Deterministic TF-IDF Vector Cosine Embeddings, EEOC 4/5ths Disparate Impact Auditing, and Enterprise ATS Webhooks (Greenhouse, Lever, Workday)
 
 ---
 
-## 🔬 Day 3 Semantic & Explainability Features
+## 🔬 Enterprise & Semantic Explainability Architecture
 
 - **Semantic Synonym Mapping**: Normalizes canonical terms (e.g., `K8s` -> `Kubernetes`, `Postgres` -> `PostgreSQL`, `TS` -> `TypeScript`) with 100% credit and transparent attribution.
 - **Domain Affinity Transfer**: Grants partial credit for adjacent skills in the same family (e.g., `Docker` -> `Kubernetes` [Container Ecosystem, 65% credit]; `MySQL` -> `PostgreSQL` [Relational DB, 75% credit]).
-- **Batch Leaderboard (`GET /api/matches/rank/:jobId`)**: Ranks all candidate profiles against a selected job description with cohort averages and tier classifications.
-- **Pairwise Comparison (`POST /api/matches/compare`)**: Side-by-side comparison of two candidates explaining why one candidate outranks another.
-- **Fairness & Compliance Dossier (`GET /api/matches/:id/report`)**: Exportable certification confirming demographic signals were masked and scoring was based strictly on demonstrable qualifications.
+- **TF-IDF & Cosine Vector Embeddings (`embedding.service.js`)**: Continuous mathematical vector space comparison ($0.0 - 1.0$) between candidate qualifications and job description texts with automated stop-word elimination and top-term attribution.
+- **EEOC 4/5ths Disparate Impact Engine (`fairness.service.js`)**: Continuous statistical analysis evaluating adverse impact across seniority brackets in accordance with EEOC Title VII Uniform Guidelines, NYC Local Law 144, and EU AI Act mandates.
+- **Enterprise ATS Webhooks (`integration.routes.js`)**: Dispatches decision payloads to Greenhouse, Lever, and Workday endpoints with formatted Markdown/JSON dossier exports.
+- **Multi-Format Document Upload**: Ingestion of PDF and TXT resumes with automatic text extraction, skill tagging, and PII anonymization.
+- **Batch Leaderboard & Pairwise Comparison**: Cohort analytics, average score telemetry, and side-by-side candidate differentials.
