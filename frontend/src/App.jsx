@@ -23,6 +23,7 @@ import {
   UserCheck,
   Users
 } from 'lucide-react';
+import { getApiUrl } from './config/api';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('matcher'); // 'matcher' | 'leaderboard' | 'comparison' | 'fairness' | 'resumes' | 'jobs' | 'system'
@@ -105,7 +106,7 @@ export default function App() {
     setHealthStatus('checking');
     const startTime = performance.now();
     try {
-      const response = await fetch('/api/health');
+      const response = await fetch(getApiUrl('/api/health'));
       const endTime = performance.now();
       setLatency(Math.round(endTime - startTime));
 
@@ -129,8 +130,8 @@ export default function App() {
     setLoadingData(true);
     try {
       const [resumesRes, jobsRes] = await Promise.all([
-        fetch('/api/resumes'),
-        fetch('/api/jobs'),
+        fetch(getApiUrl('/api/resumes')),
+        fetch(getApiUrl('/api/jobs')),
       ]);
 
       if (resumesRes.ok) {
@@ -166,7 +167,7 @@ export default function App() {
   const handleSeedData = async () => {
     setLoadingData(true);
     try {
-      const res = await fetch('/api/seed', { method: 'POST' });
+      const res = await fetch(getApiUrl('/api/seed'), { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error?.message || data.error || 'Failed to seed sample data');
@@ -188,7 +189,7 @@ export default function App() {
     setEvaluating(true);
     setMatchError(null);
     try {
-      const res = await fetch('/api/matches/evaluate', {
+      const res = await fetch(getApiUrl('/api/matches/evaluate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resumeId: selectedResumeId, jobId: selectedJobId }),
@@ -211,7 +212,7 @@ export default function App() {
     if (!jId) return;
     setLoadingLeaderboard(true);
     try {
-      const res = await fetch(`/api/matches/rank/${jId}`);
+      const res = await fetch(getApiUrl(`/api/matches/rank/${jId}`));
       const data = await res.json();
       if (res.ok) {
         setLeaderboardData(data.data);
@@ -227,7 +228,7 @@ export default function App() {
     if (!compCandA || !compCandB || !compJobId) return;
     setEvaluatingComp(true);
     try {
-      const res = await fetch('/api/matches/compare', {
+      const res = await fetch(getApiUrl('/api/matches/compare'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -250,7 +251,7 @@ export default function App() {
   const handleOpenDossier = async (matchId) => {
     if (!matchId) return;
     try {
-      const res = await fetch(`/api/matches/${matchId}/report`);
+      const res = await fetch(getApiUrl(`/api/matches/${matchId}/report`));
       const data = await res.json();
       if (res.ok) {
         setActiveDossier(data.data);
@@ -264,7 +265,7 @@ export default function App() {
     if (!jobId) return;
     setLoadingFairness(true);
     try {
-      const res = await fetch(`/api/matches/fairness-audit/${jobId}?threshold=${threshold}`);
+      const res = await fetch(getApiUrl(`/api/matches/fairness-audit/${jobId}?threshold=${threshold}`));
       if (res.ok) {
         const data = await res.json();
         setFairnessAuditData(data);
@@ -281,7 +282,7 @@ export default function App() {
     setDispatchingWebhook(true);
     setWebhookResponse(null);
     try {
-      const res = await fetch('/api/integrations/webhook/dispatch', {
+      const res = await fetch(getApiUrl('/api/integrations/webhook/dispatch'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -304,7 +305,7 @@ export default function App() {
 
   const handleDownloadMarkdown = (matchId) => {
     if (!matchId) return;
-    window.open(`/api/integrations/export/${matchId}?format=markdown`, '_blank');
+    window.open(getApiUrl(`/api/integrations/export/${matchId}?format=markdown`), '_blank');
   };
 
   const handleCreateResume = async (e) => {
@@ -316,7 +317,7 @@ export default function App() {
         formData.append('resumeFile', resumeFile);
         formData.append('anonymize', String(anonymizePII));
 
-        const res = await fetch('/api/resumes/upload', {
+        const res = await fetch(getApiUrl('/api/resumes/upload'), {
           method: 'POST',
           body: formData,
         });
@@ -330,7 +331,7 @@ export default function App() {
           showBanner(`Upload failed: ${data.error}`);
         }
       } else if (resumeText.trim()) {
-        const res = await fetch('/api/resumes', {
+        const res = await fetch(getApiUrl('/api/resumes'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ rawText: resumeText, anonymize: anonymizePII }),
@@ -357,7 +358,7 @@ export default function App() {
     if (!jobTitle || !jobDescription) return;
     setSubmittingJob(true);
     try {
-      const res = await fetch('/api/jobs', {
+      const res = await fetch(getApiUrl('/api/jobs'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -386,7 +387,7 @@ export default function App() {
 
   const handleDeleteResume = async (id) => {
     try {
-      await fetch(`/api/resumes/${id}`, { method: 'DELETE' });
+      await fetch(getApiUrl(`/api/resumes/${id}`), { method: 'DELETE' });
       showBanner('Candidate record deleted.');
       await fetchResumesAndJobs();
     } catch (err) {
@@ -396,7 +397,7 @@ export default function App() {
 
   const handleDeleteJob = async (id) => {
     try {
-      await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+      await fetch(getApiUrl(`/api/jobs/${id}`), { method: 'DELETE' });
       showBanner('Job posting deleted.');
       await fetchResumesAndJobs();
     } catch (err) {
@@ -1893,7 +1894,7 @@ export default function App() {
                   </div>
                   <div>
                     <h2 className="text-lg font-semibold text-white">Live Health-Check Telemetry</h2>
-                    <p className="text-xs text-slate-400">Real-time status pinging <code className="text-indigo-300">/api/health</code></p>
+                    <p className="text-xs text-slate-400">Target Endpoint: <code className="text-indigo-300 font-mono">{getApiUrl('/api/health')}</code></p>
                   </div>
                 </div>
 

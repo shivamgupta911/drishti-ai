@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://drishti-ai-backend.onrender.com/api/:path*"
+      "destination": "https://drishti-ai-backend-emau.onrender.com/api/:path*"
     },
     {
       "source": "/(.*)",
