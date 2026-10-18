@@ -144,8 +144,8 @@ export default function AnalyticsLab({ jobs = [], selectedJobId, onSelectCandida
         </div>
 
         {/* Job Selector */}
-        <div className="flex items-center gap-3">
-          <label className="text-xs font-semibold text-[#65717D] uppercase font-mono tracking-wider">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+          <label className="text-xs font-semibold text-[#65717D] uppercase font-mono tracking-wider shrink-0">
             Requisition:
           </label>
           <select
@@ -154,7 +154,7 @@ export default function AnalyticsLab({ jobs = [], selectedJobId, onSelectCandida
               setActiveJobId(e.target.value);
               if (onSelectJob) onSelectJob(e.target.value);
             }}
-            className="px-3 py-2 rounded-lg bg-white border border-[#DDE3E1] text-xs font-medium text-[#202B35] focus:outline-none focus:border-[#187D70]"
+            className="w-full sm:w-auto max-w-full px-3 py-2 rounded-lg bg-white border border-[#DDE3E1] text-xs font-medium text-[#202B35] focus:outline-none focus:border-[#187D70] truncate min-w-0 cursor-pointer"
           >
             {jobs.map((j) => (
               <option key={j._id} value={j._id}>

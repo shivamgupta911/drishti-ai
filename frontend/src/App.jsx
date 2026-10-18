@@ -162,17 +162,6 @@ export default function App() {
     };
   }, [mobileMenuOpen]);
 
-  // Keyboard navigation support (Escape closes dropdowns and drawers)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        setMobileMenuOpen(false);
-        setMoreMenuOpen(false);
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
   // Health telemetry state
   const [healthData, setHealthData] = useState(null);
@@ -250,6 +239,21 @@ export default function App() {
     setBannerMsg(text);
     setTimeout(() => setBannerMsg(null), 4000);
   };
+
+  // Keyboard navigation support (Escape closes dropdowns, drawers, and active modals)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setMobileMenuOpen(false);
+        setMoreMenuOpen(false);
+        setAuditModalOpen(false);
+        setWebhookModalOpen(false);
+        setActiveDossier(null);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const checkHealth = async (isRetry = false) => {
     setHealthStatus((prev) => (prev === 'healthy' ? 'healthy' : 'checking'));
@@ -1509,15 +1513,15 @@ export default function App() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-[#65717D] font-medium">Select Role:</span>
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+                <span className="text-xs text-[#65717D] font-medium shrink-0">Select Role:</span>
                 <select
                   value={leaderboardJobId}
                   onChange={(e) => {
                     setLeaderboardJobId(e.target.value);
                     fetchLeaderboard(e.target.value);
                   }}
-                  className="bg-white border border-[#DDE3E1] rounded-lg px-3 py-2 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] font-medium cursor-pointer shadow-xs"
+                  className="w-full sm:w-auto max-w-full bg-white border border-[#DDE3E1] rounded-lg px-3 py-2 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] font-medium cursor-pointer shadow-xs truncate min-w-0"
                 >
                   {jobs.map((j) => (
                     <option key={j._id} value={j._id}>{j.title}</option>
@@ -1914,14 +1918,14 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#65717D] font-medium">Role:</span>
+                  <span className="text-xs text-[#65717D] font-medium shrink-0">Role:</span>
                   <select
                     value={selectedJobId}
                     onChange={(e) => {
                       setSelectedJobId(e.target.value);
                       fetchFairnessAudit(e.target.value, fairnessThreshold);
                     }}
-                    className="bg-white border border-[#DDE3E1] rounded-lg px-3 py-1.5 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] cursor-pointer shadow-xs font-medium"
+                    className="bg-white border border-[#DDE3E1] rounded-lg px-3 py-1.5 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] cursor-pointer shadow-xs font-medium max-w-[180px] sm:max-w-none truncate"
                   >
                     {jobs.map(j => (
                       <option key={j._id} value={j._id}>{j.title}</option>
