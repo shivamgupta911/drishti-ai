@@ -26,7 +26,9 @@ import {
   Sliders,
   GitBranch,
   ChevronDown,
-  MoreHorizontal
+  MoreHorizontal,
+  Menu,
+  X
 } from 'lucide-react';
 import { getApiUrl, safeParseResponse } from './config/api';
 import EvidencePanel from './components/EvidencePanel';
@@ -35,21 +37,141 @@ import AnalyticsLab from './components/AnalyticsLab';
 import AuditHistoryModal from './components/AuditHistoryModal';
 import OutcomeTracker from './components/OutcomeTracker';
 
+// Navigation catalog with calibrated render widths and metadata
+const NAV_ITEMS = [
+  { id: 'matcher', label: 'Match Studio', icon: Target, minWidth: 125 },
+  { id: 'leaderboard', label: 'Leaderboard', icon: BarChart3, minWidth: 120 },
+  { id: 'comparison', label: 'Compare', icon: Scale, minWidth: 95 },
+  { id: 'analytics', label: 'Analytics Lab', icon: Activity, minWidth: 125 },
+  { id: 'simulator', label: 'What-If', icon: Sliders, minWidth: 95 },
+  { id: 'outcomes', label: 'Pipeline', icon: GitBranch, minWidth: 95 },
+  { id: 'fairness', label: 'Fairness', icon: ShieldCheck, minWidth: 95 },
+  { id: 'audit', label: 'Audit Ledger', icon: History, minWidth: 120, isModal: true },
+  { id: 'resumes', label: 'Resumes', icon: FileText, minWidth: 115, countKey: 'resumes' },
+  { id: 'jobs', label: 'Job Postings', icon: Briefcase, minWidth: 125, countKey: 'jobs' },
+  { id: 'system', label: 'Telemetry', icon: Activity, minWidth: 110 },
+];
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('matcher'); // 'matcher' | 'leaderboard' | 'comparison' | 'analytics' | 'simulator' | 'outcomes' | 'fairness' | 'resumes' | 'jobs' | 'system'
   
-  // Header dropdown state
+  // Header dropdown & mobile navigation state
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const moreMenuRef = useRef(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [visibleItemCount, setVisibleItemCount] = useState(4);
 
+  const headerInnerRef = useRef(null);
+  const brandRef = useRef(null);
+  const utilityRef = useRef(null);
+  const moreMenuRef = useRef(null);
+  const mobileMenuRef = useRef(null);
+
+  // Derive visible and overflow items based on measured space
+  const visibleNavItems = NAV_ITEMS.slice(0, visibleItemCount);
+  const overflowNavItems = NAV_ITEMS.slice(visibleItemCount);
+  const isOverflowActive = overflowNavItems.some((item) => !item.isModal && item.id === activeTab);
+  const activeOverflowItem = overflowNavItems.find((item) => !item.isModal && item.id === activeTab);
+
+  // Dynamic navigation overflow measurement based on container space
+  useEffect(() => {
+    const updateVisibleItems = () => {
+      if (!headerInnerRef.current) return;
+      const width = headerInnerRef.current.clientWidth;
+      
+      // Below 1024px viewport (container width < 960px), mobile menu takes over
+      if (width < 960) return;
+
+      const bWidth = brandRef.current ? brandRef.current.offsetWidth : 160;
+      const uWidth = utilityRef.current ? utilityRef.current.offsetWidth : 260;
+      // 52px buffer for safety margins, borders, and flex gaps
+      const available = width - bWidth - uWidth - 52;
+
+      const moreBtnWidth = 90;
+      let count = 0;
+      let accumulated = 0;
+
+      for (let i = 4; i < NAV_ITEMS.length; i++) {
+        // Start counting beyond core 4
+      }
+
+      for (let i = 0; i < NAV_ITEMS.length; i++) {
+        const itemWidth = NAV_ITEMS[i].minWidth;
+        const isLastItem = (i === NAV_ITEMS.length - 1);
+        const neededMore = isLastItem ? 0 : moreBtnWidth;
+        const next = accumulated + itemWidth + (i > 0 ? 6 : 0);
+
+        if (next + neededMore <= available) {
+          count = i + 1;
+          accumulated = next;
+        } else {
+          break;
+        }
+      }
+
+      // Ensure at least 3 core destinations (Match Studio, Leaderboard, Compare) are visible if practical
+      setVisibleItemCount(Math.max(3, Math.min(count, NAV_ITEMS.length)));
+    };
+
+    updateVisibleItems();
+
+    let ro;
+    if (typeof ResizeObserver !== 'undefined' && headerInnerRef.current) {
+      ro = new ResizeObserver(() => {
+        window.requestAnimationFrame(updateVisibleItems);
+      });
+      ro.observe(headerInnerRef.current);
+      if (utilityRef.current) ro.observe(utilityRef.current);
+    }
+
+    window.addEventListener('resize', updateVisibleItems);
+    window.addEventListener('orientationchange', updateVisibleItems);
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(updateVisibleItems);
+    }
+
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', updateVisibleItems);
+      window.removeEventListener('orientationchange', updateVisibleItems);
+    };
+  }, []);
+
+  // Handle outside click for More dropdown and Mobile menu
   useEffect(() => {
     const handleOutsideClick = (event) => {
       if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
         setMoreMenuOpen(false);
       }
+      if (mobileMenuOpen && mobileMenuRef.current && !mobileMenuRef.current.contains(event.target)) {
+        setMobileMenuOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [mobileMenuOpen]);
+
+  // Lock body scroll when mobile navigation drawer is open
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [mobileMenuOpen]);
+
+  // Keyboard navigation support (Escape closes dropdowns and drawers)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setMobileMenuOpen(false);
+        setMoreMenuOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Health telemetry state
@@ -455,10 +577,12 @@ export default function App() {
 
       {/* Primary Application Header */}
       <header className="border-b border-[#DDE3E1] bg-white sticky top-0 z-40 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2.5 xl:gap-4">
+        <div ref={headerInnerRef} className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3 xl:gap-4">
           
-          {/* Brand Identity */}
-          <div className="flex items-center gap-2.5 shrink-0">
+          {/* ============================================================== */}
+          {/* DESKTOP VIEW: BRAND IDENTITY                                  */}
+          {/* ============================================================== */}
+          <div ref={brandRef} className="hidden lg:flex items-center gap-2.5 shrink-0">
             <div className="h-9 w-9 rounded-lg bg-[#E5F3EF] border border-[#187D70]/20 flex items-center justify-center text-[#187D70] shrink-0">
               <Target className="w-5 h-5 stroke-[2.2]" />
             </div>
@@ -466,181 +590,131 @@ export default function App() {
               <span className="font-bold text-base tracking-tight text-[#202B35] block leading-none">
                 Drishti AI
               </span>
-              <span className="text-[11px] text-[#65717D] tracking-normal font-normal block mt-0.5">
+              <span className="hidden xl:block text-[11px] text-[#65717D] tracking-normal font-normal mt-0.5 whitespace-nowrap">
                 Explainable Job-Fit Intelligence
+              </span>
+              <span className="xl:hidden block text-[10px] text-[#65717D] tracking-normal font-normal mt-0.5 whitespace-nowrap">
+                Job-Fit Intel
               </span>
             </div>
           </div>
 
-          {/* Desktop Navigation Tabs */}
-          <nav aria-label="Main Navigation" className="hidden lg:flex items-center gap-1 xl:gap-1.5 text-xs">
-            <button
-              onClick={() => setActiveTab('matcher')}
-              className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
-                activeTab === 'matcher'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
-              }`}
-            >
-              <Target className="w-3.5 h-3.5 shrink-0" />
-              <span>Match Studio</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('leaderboard')}
-              className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
-                activeTab === 'leaderboard'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
-              }`}
-            >
-              <BarChart3 className="w-3.5 h-3.5 shrink-0" />
-              <span>Leaderboard</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('comparison')}
-              className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
-                activeTab === 'comparison'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
-              }`}
-            >
-              <Scale className="w-3.5 h-3.5 shrink-0" />
-              <span>Compare</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('analytics')}
-              className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
-                activeTab === 'analytics'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
-              }`}
-            >
-              <Activity className="w-3.5 h-3.5 shrink-0" />
-              <span>Analytics Lab</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('simulator')}
-              className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
-                activeTab === 'simulator'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
-              }`}
-            >
-              <Sliders className="w-3.5 h-3.5 shrink-0" />
-              <span>What-If</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('outcomes')}
-              className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
-                activeTab === 'outcomes'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
-              }`}
-            >
-              <GitBranch className="w-3.5 h-3.5 shrink-0" />
-              <span>Pipeline</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('fairness')}
-              className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
-                activeTab === 'fairness'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-              <span>Fairness</span>
-            </button>
-
-            {/* Responsive Secondary Tabs: More Dropdown */}
-            <div className="relative shrink-0" ref={moreMenuRef}>
-              <button
-                onClick={() => setMoreMenuOpen(!moreMenuOpen)}
-                aria-expanded={moreMenuOpen}
-                aria-haspopup="true"
-                className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
-                  ['resumes', 'jobs', 'system'].includes(activeTab)
-                    ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
-                    : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
-                }`}
-              >
-                <MoreHorizontal className="w-3.5 h-3.5 shrink-0" />
-                <span>
-                  {activeTab === 'resumes'
-                    ? `Resumes (${resumes.length})`
-                    : activeTab === 'jobs'
-                    ? `Jobs (${jobs.length})`
-                    : activeTab === 'system'
-                    ? 'Telemetry'
-                    : 'More'}
-                </span>
-                <ChevronDown className={`w-3 h-3 shrink-0 transition-transform duration-150 ${moreMenuOpen ? 'rotate-180 text-[#187D70]' : ''}`} />
-              </button>
-
-              {moreMenuOpen && (
-                <div className="absolute right-0 top-full mt-1.5 w-48 bg-white rounded-xl border border-[#DDE3E1] shadow-lg py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
+          {/* ============================================================== */}
+          {/* DESKTOP VIEW: DYNAMIC PRIMARY NAVIGATION TABS                  */}
+          {/* ============================================================== */}
+          <nav aria-label="Main Navigation" className="hidden lg:flex items-center gap-1 xl:gap-1.5 text-xs shrink-0">
+            {visibleNavItems.map((item) => {
+              const IconComponent = item.icon;
+              const isActive = activeTab === item.id;
+              
+              if (item.isModal) {
+                return (
                   <button
-                    onClick={() => { setActiveTab('resumes'); setMoreMenuOpen(false); }}
-                    className={`w-full flex items-center justify-between px-3.5 py-2 text-xs transition-colors cursor-pointer ${
-                      activeTab === 'resumes' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#202B35] hover:bg-[#F5F6F3]'
-                    }`}
+                    key={item.id}
+                    onClick={() => setAuditModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 text-[#202B35] bg-white hover:bg-[#EEF2F1] border border-[#DDE3E1] shadow-2xs cursor-pointer"
+                    title="Audit History & Recruiter Override Ledger"
                   >
-                    <span className="flex items-center gap-2">
-                      <FileText className="w-3.5 h-3.5 text-[#187D70]" />
-                      <span>Resumes</span>
-                    </span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#EEF2F1] text-[#65717D] font-mono">
-                      {resumes.length}
-                    </span>
+                    <IconComponent className="w-3.5 h-3.5 text-[#187D70] shrink-0" />
+                    <span>{item.label}</span>
                   </button>
+                );
+              }
 
-                  <button
-                    onClick={() => { setActiveTab('jobs'); setMoreMenuOpen(false); }}
-                    className={`w-full flex items-center justify-between px-3.5 py-2 text-xs transition-colors cursor-pointer ${
-                      activeTab === 'jobs' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#202B35] hover:bg-[#F5F6F3]'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <Briefcase className="w-3.5 h-3.5 text-[#187D70]" />
-                      <span>Job Postings</span>
-                    </span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#EEF2F1] text-[#65717D] font-mono">
-                      {jobs.length}
-                    </span>
-                  </button>
+              const count = item.countKey === 'resumes' ? resumes.length : item.countKey === 'jobs' ? jobs.length : null;
 
-                  <button
-                    onClick={() => { setActiveTab('system'); setMoreMenuOpen(false); }}
-                    className={`w-full flex items-center gap-2 px-3.5 py-2 text-xs transition-colors cursor-pointer ${
-                      activeTab === 'system' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#202B35] hover:bg-[#F5F6F3]'
-                    }`}
-                  >
-                    <Activity className="w-3.5 h-3.5 text-[#187D70]" />
-                    <span>System Telemetry</span>
-                  </button>
-                </div>
-              )}
-            </div>
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
+                    isActive
+                      ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
+                      : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
+                  }`}
+                >
+                  <IconComponent className="w-3.5 h-3.5 shrink-0" />
+                  <span>{item.label}</span>
+                  {count !== null && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[#EEF2F1] text-[#65717D] font-mono ml-0.5">
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+
+            {/* Dynamic Overflow Dropdown (More Menu) */}
+            {overflowNavItems.length > 0 && (
+              <div className="relative shrink-0" ref={moreMenuRef}>
+                <button
+                  onClick={() => setMoreMenuOpen(!moreMenuOpen)}
+                  aria-expanded={moreMenuOpen}
+                  aria-haspopup="true"
+                  className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
+                    isOverflowActive
+                      ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
+                      : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
+                  }`}
+                >
+                  <MoreHorizontal className="w-3.5 h-3.5 shrink-0" />
+                  <span>{isOverflowActive && activeOverflowItem ? activeOverflowItem.label : 'More'}</span>
+                  <ChevronDown className={`w-3 h-3 shrink-0 transition-transform duration-150 ${moreMenuOpen ? 'rotate-180 text-[#187D70]' : ''}`} />
+                </button>
+
+                {moreMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 w-52 bg-white rounded-xl border border-[#DDE3E1] shadow-lg py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100 max-h-[calc(100vh-80px)] overflow-y-auto">
+                    <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#65717D] border-b border-[#EEF2F1] mb-1">
+                      Additional Views
+                    </div>
+                    {overflowNavItems.map((item) => {
+                      const IconComponent = item.icon;
+                      const isActive = activeTab === item.id;
+                      const count = item.countKey === 'resumes' ? resumes.length : item.countKey === 'jobs' ? jobs.length : null;
+
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            if (item.isModal) {
+                              setAuditModalOpen(true);
+                            } else {
+                              setActiveTab(item.id);
+                            }
+                            setMoreMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2 text-xs transition-colors cursor-pointer ${
+                            isActive
+                              ? 'bg-[#E5F3EF] text-[#187D70] font-semibold'
+                              : 'text-[#202B35] hover:bg-[#F5F6F3]'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <IconComponent className="w-3.5 h-3.5 text-[#187D70] shrink-0" />
+                            <span>{item.label}</span>
+                          </span>
+                          {count !== null && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#EEF2F1] text-[#65717D] font-mono">
+                              {count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </nav>
 
-          {/* Visual Divider between Navigation and Utility Actions */}
-          <div className="hidden lg:block h-5 w-px bg-[#DDE3E1] shrink-0" aria-hidden="true" />
+          {/* ============================================================== */}
+          {/* DESKTOP VIEW: UTILITY CONTROLS                                 */}
+          {/* ============================================================== */}
+          <div ref={utilityRef} className="hidden lg:flex items-center gap-2 xl:gap-2.5 shrink-0">
+            <div className="h-5 w-px bg-[#DDE3E1] shrink-0" aria-hidden="true" />
 
-          {/* Actions & Persona Control */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Audit History Ledger Trigger */}
-            <button
-              onClick={() => setAuditModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] text-[#202B35] text-xs font-medium transition shadow-2xs cursor-pointer shrink-0"
-              title="Audit History & Recruiter Override Ledger"
-            >
-              <History className="w-3.5 h-3.5 text-[#187D70] shrink-0" />
-              <span className="hidden xl:inline">Audit Ledger</span>
-              <span className="xl:hidden hidden sm:inline">Audit</span>
-            </button>
-
-            {/* User Persona Switcher */}
-            <div className="hidden 2xl:flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#F5F6F3] border border-[#DDE3E1] text-xs shrink-0">
+            {/* Recruiter Persona Switcher */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#F5F6F3] border border-[#DDE3E1] text-xs shrink-0">
               <UserCheck className="w-3.5 h-3.5 text-[#187D70] shrink-0" />
               <select
                 value={activeUser.role}
@@ -655,11 +729,12 @@ export default function App() {
                   }
                   showBanner(`Active persona: ${r.replace('_', ' ').toUpperCase()}`);
                 }}
+                aria-label="Select User Persona"
                 className="bg-transparent text-[#202B35] font-medium focus:outline-none cursor-pointer"
               >
-                <option value="recruiter">Sarah (Recruiter)</option>
-                <option value="hiring_manager">David (Manager)</option>
-                <option value="candidate">Alex (Candidate)</option>
+                <option value="recruiter">Recruiter</option>
+                <option value="hiring_manager">Manager</option>
+                <option value="candidate">Candidate</option>
               </select>
             </div>
 
@@ -672,7 +747,7 @@ export default function App() {
             >
               <Zap className={`w-3.5 h-3.5 text-[#A96512] shrink-0 ${loadingData ? 'animate-pulse' : ''}`} />
               <span className="hidden xl:inline">{loadingData ? 'Seeding...' : 'Seed Data'}</span>
-              <span className="xl:hidden hidden sm:inline">{loadingData ? '...' : 'Seed'}</span>
+              <span className="xl:hidden inline">{loadingData ? '...' : 'Seed'}</span>
             </button>
 
             {/* Connection Status Indicator */}
@@ -689,24 +764,24 @@ export default function App() {
               {healthStatus === 'healthy' ? (
                 <>
                   <span className="w-2 h-2 rounded-full bg-[#187D58] shrink-0" />
-                  <span className="text-[#187D58] font-medium text-[11px] hidden sm:inline whitespace-nowrap">
-                    {healthData?.database?.type === 'in-memory (local-development-only)' ? 'Local Dev DB' : 'Connected'}
+                  <span className="text-[#187D58] font-medium text-[11px] whitespace-nowrap">
+                    {healthData?.database?.type === 'in-memory (local-development-only)' ? 'Local DB' : 'Connected'}
                   </span>
                 </>
               ) : healthStatus === 'checking' ? (
                 <>
                   <span className="w-2 h-2 rounded-full bg-[#A96512] animate-pulse shrink-0" />
-                  <span className="text-[#A96512] font-medium text-[11px] hidden sm:inline whitespace-nowrap">Connecting...</span>
+                  <span className="text-[#A96512] font-medium text-[11px] whitespace-nowrap">Connecting...</span>
                 </>
               ) : (
                 <>
                   <span className="w-2 h-2 rounded-full bg-[#BD4148] shrink-0" />
-                  <span className="text-[#BD4148] font-medium text-[11px] hidden sm:inline whitespace-nowrap">Offline</span>
+                  <span className="text-[#BD4148] font-medium text-[11px] whitespace-nowrap">Offline</span>
                 </>
               )}
             </div>
 
-            {/* Refresh telemetry */}
+            {/* Refresh Telemetry */}
             <button
               onClick={() => { checkHealth(); fetchResumesAndJobs(); }}
               disabled={loadingData}
@@ -716,108 +791,224 @@ export default function App() {
               <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${healthStatus === 'checking' || loadingData ? 'animate-spin text-[#187D70]' : ''}`} />
             </button>
           </div>
+
+          {/* ============================================================== */}
+          {/* MOBILE VIEW: COMPACT HEADER (BRAND + STATUS + MENU BUTTON)     */}
+          {/* ============================================================== */}
+          <div className="lg:hidden flex items-center justify-between w-full">
+            {/* Compact Brand */}
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="h-9 w-9 rounded-lg bg-[#E5F3EF] border border-[#187D70]/20 flex items-center justify-center text-[#187D70] shrink-0">
+                <Target className="w-5 h-5 stroke-[2.2]" />
+              </div>
+              <div>
+                <span className="font-bold text-base tracking-tight text-[#202B35] block leading-none">
+                  Drishti AI
+                </span>
+                <span className="text-[10px] text-[#65717D] tracking-normal font-normal block mt-0.5">
+                  Job-Fit Intelligence
+                </span>
+              </div>
+            </div>
+
+            {/* Mobile Header Right Controls: Status & Hamburger Button */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Compact Status Indicator */}
+              <div
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-[#DDE3E1] bg-[#F5F6F3] text-[11px]"
+                title={healthStatus === 'healthy' ? `Backend connected (${latency ? `${latency}ms` : 'ok'})` : healthStatus}
+              >
+                <span className={`w-2 h-2 rounded-full shrink-0 ${healthStatus === 'healthy' ? 'bg-[#187D58]' : healthStatus === 'checking' ? 'bg-[#A96512] animate-pulse' : 'bg-[#BD4148]'}`} />
+                <span className="hidden sm:inline font-medium text-[#202B35]">{healthStatus === 'healthy' ? 'Connected' : 'Offline'}</span>
+              </div>
+
+              {/* Hamburger Button with 44x44px Touch Target */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                aria-label={mobileMenuOpen ? 'Close Navigation Menu' : 'Open Navigation Menu'}
+                aria-expanded={mobileMenuOpen}
+                aria-controls="mobile-navigation-drawer"
+                className="min-w-[44px] min-h-[44px] w-11 h-11 flex items-center justify-center rounded-xl border border-[#DDE3E1] bg-white text-[#202B35] hover:bg-[#EEF2F1] active:bg-[#E5F3EF] transition cursor-pointer shadow-2xs"
+              >
+                {mobileMenuOpen ? <X className="w-5 h-5 text-[#202B35]" /> : <Menu className="w-5 h-5 text-[#202B35]" />}
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* Mobile Navigation Bar */}
-        <div className="lg:hidden flex border-t border-[#DDE3E1] px-4 py-2 gap-1.5 overflow-x-auto text-xs bg-white">
-          <button
-            onClick={() => setActiveTab('matcher')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
-              activeTab === 'matcher' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
-            }`}
-          >
-            <Target className="w-3.5 h-3.5" />
-            <span>Match Studio</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('leaderboard')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
-              activeTab === 'leaderboard' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5" />
-            <span>Leaderboard</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('comparison')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
-              activeTab === 'comparison' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
-            }`}
-          >
-            <Scale className="w-3.5 h-3.5" />
-            <span>Compare</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
-              activeTab === 'analytics' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5 text-[#187D70]" />
-            <span>Analytics Lab</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('simulator')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
-              activeTab === 'simulator' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5 text-[#187D70]" />
-            <span>What-If</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('outcomes')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
-              activeTab === 'outcomes' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
-            }`}
-          >
-            <GitBranch className="w-3.5 h-3.5 text-[#187D70]" />
-            <span>Pipeline</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('fairness')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
-              activeTab === 'fairness' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Fairness</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('resumes')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
-              activeTab === 'resumes' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>Resumes ({resumes.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('jobs')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
-              activeTab === 'jobs' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
-            }`}
-          >
-            <Briefcase className="w-3.5 h-3.5" />
-            <span>Jobs ({jobs.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('system')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
-              activeTab === 'system' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5" />
-            <span>Telemetry</span>
-          </button>
-          <button
-            onClick={() => setAuditModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium text-[#187D70] bg-[#E5F3EF] border border-[#187D70]/20"
-          >
-            <History className="w-3.5 h-3.5" />
-            <span>Audit Ledger</span>
-          </button>
-        </div>
+        {/* ============================================================== */}
+        {/* MOBILE NAVIGATION DRAWER & BACKDROP                            */}
+        {/* ============================================================== */}
+        {mobileMenuOpen && (
+          <div className="lg:hidden">
+            {/* Darkened Backdrop */}
+            <div
+              className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150 motion-reduce:animate-none"
+              onClick={() => setMobileMenuOpen(false)}
+              aria-hidden="true"
+            />
+
+            {/* Slide-in Mobile Drawer */}
+            <div
+              id="mobile-navigation-drawer"
+              ref={mobileMenuRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Navigation Menu"
+              className="fixed top-0 right-0 bottom-0 w-[85vw] max-w-sm bg-white shadow-2xl z-50 flex flex-col justify-between overflow-y-auto border-l border-[#DDE3E1] motion-safe:animate-in motion-safe:slide-in-from-right motion-safe:duration-200 motion-reduce:animate-none"
+            >
+              {/* Drawer Sticky Header */}
+              <div className="sticky top-0 bg-white border-b border-[#DDE3E1] p-4 flex items-center justify-between z-10">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-9 w-9 rounded-lg bg-[#E5F3EF] border border-[#187D70]/20 flex items-center justify-center text-[#187D70] shrink-0">
+                    <Target className="w-5 h-5 stroke-[2.2]" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-sm tracking-tight text-[#202B35] block leading-none">
+                      Drishti AI
+                    </span>
+                    <span className="text-[10px] text-[#65717D] block mt-0.5">
+                      Recruitment Intelligence
+                    </span>
+                  </div>
+                </div>
+
+                {/* Close Button with 44x44px Touch Target */}
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  aria-label="Close Navigation Menu"
+                  className="min-w-[44px] min-h-[44px] w-11 h-11 flex items-center justify-center rounded-xl hover:bg-[#EEF2F1] text-[#65717D] hover:text-[#202B35] transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Drawer Scrollable Content */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                
+                {/* Active Persona Card & Switcher */}
+                <div className="p-3 bg-[#F5F6F3] rounded-xl border border-[#DDE3E1] space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#65717D]">Current Persona</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#E5F3EF] text-[#187D70] font-semibold capitalize">
+                      {activeUser.role.replace('_', ' ')}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-[#E5F3EF] text-[#187D70] flex items-center justify-center shrink-0">
+                      <UserCheck className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-xs text-[#202B35] truncate">{activeUser.name}</div>
+                      <div className="text-[11px] text-[#65717D] truncate">{activeUser.title}</div>
+                    </div>
+                  </div>
+                  <select
+                    value={activeUser.role}
+                    onChange={(e) => {
+                      const r = e.target.value;
+                      if (r === 'recruiter') {
+                        setActiveUser({ name: 'Sarah Connor', role: 'recruiter', title: 'Senior Talent Partner', email: 'recruiter@drishti.ai' });
+                      } else if (r === 'hiring_manager') {
+                        setActiveUser({ name: 'David Vance', role: 'hiring_manager', title: 'VP Platform Engineering', email: 'manager@drishti.ai' });
+                      } else {
+                        setActiveUser({ name: 'Alex Mercer', role: 'candidate', title: 'Candidate Profile', email: 'candidate@drishti.ai' });
+                      }
+                      showBanner(`Active persona: ${r.replace('_', ' ').toUpperCase()}`);
+                    }}
+                    aria-label="Change active user persona"
+                    className="w-full min-h-[44px] h-11 px-3 bg-white border border-[#DDE3E1] rounded-lg text-xs font-medium text-[#202B35] focus:outline-none focus:border-[#187D70] cursor-pointer"
+                  >
+                    <option value="recruiter">Sarah Connor (Recruiter)</option>
+                    <option value="hiring_manager">David Vance (Hiring Manager)</option>
+                    <option value="candidate">Alex Mercer (Candidate)</option>
+                  </select>
+                </div>
+
+                {/* Primary Destinations Section */}
+                <div className="space-y-1">
+                  <div className="px-1 text-[10px] font-semibold uppercase tracking-wider text-[#65717D] mb-1.5">
+                    Workspace Navigation
+                  </div>
+                  {NAV_ITEMS.map((item) => {
+                    const IconComponent = item.icon;
+                    const isActive = activeTab === item.id;
+                    const count = item.countKey === 'resumes' ? resumes.length : item.countKey === 'jobs' ? jobs.length : null;
+
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          if (item.isModal) {
+                            setAuditModalOpen(true);
+                          } else {
+                            setActiveTab(item.id);
+                          }
+                          setMobileMenuOpen(false);
+                        }}
+                        className={`w-full min-h-[44px] flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition cursor-pointer ${
+                          isActive
+                            ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
+                            : 'text-[#202B35] hover:bg-[#F5F6F3] border border-transparent'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <IconComponent className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#187D70]' : 'text-[#65717D]'}`} />
+                          <span>{item.label}</span>
+                        </span>
+                        {count !== null && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#EEF2F1] text-[#65717D] font-mono">
+                            {count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Utility Controls in Mobile Menu */}
+                <div className="space-y-2 pt-2 border-t border-[#DDE3E1]">
+                  <div className="px-1 text-[10px] font-semibold uppercase tracking-wider text-[#65717D] mb-1">
+                    System Controls
+                  </div>
+                  
+                  {/* Seed Data button (min-h-[44px]) */}
+                  <button
+                    onClick={() => { handleSeedData(); setMobileMenuOpen(false); }}
+                    disabled={loadingData}
+                    className="w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] active:bg-[#E5F3EF] text-[#202B35] text-xs font-semibold transition disabled:opacity-50 shadow-2xs cursor-pointer"
+                  >
+                    <Zap className={`w-4 h-4 text-[#A96512] shrink-0 ${loadingData ? 'animate-pulse' : ''}`} />
+                    <span>{loadingData ? 'Seeding Demo Data...' : 'Seed Data'}</span>
+                  </button>
+
+                  {/* Refresh button (min-h-[44px]) */}
+                  <button
+                    onClick={() => { checkHealth(); fetchResumesAndJobs(); }}
+                    disabled={loadingData}
+                    className="w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] active:bg-[#E5F3EF] text-[#65717D] hover:text-[#202B35] text-xs font-medium transition disabled:opacity-50 shadow-2xs cursor-pointer"
+                  >
+                    <RefreshCw className={`w-4 h-4 shrink-0 ${healthStatus === 'checking' || loadingData ? 'animate-spin text-[#187D70]' : ''}`} />
+                    <span>Refresh Telemetry &amp; Records</span>
+                  </button>
+
+                  {/* Latency / Connection Info */}
+                  <div className="px-3 py-2 rounded-lg bg-[#F5F6F3] text-[11px] text-[#65717D] flex items-center justify-between">
+                    <span>Backend Status:</span>
+                    <span className="font-mono text-[#202B35] font-medium">
+                      {healthStatus === 'healthy' ? `Healthy (${latency || 0}ms)` : healthStatus}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Drawer Footer */}
+              <div className="p-4 border-t border-[#DDE3E1] bg-[#FBFBFA] text-center text-[10px] text-[#65717D]">
+                Drishti AI Platform • EEOC Compliant
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Main Content Area */}
@@ -2404,13 +2595,15 @@ export default function App() {
 
       {/* Application Footer */}
       <footer className="border-t border-[#DDE3E1] mt-20 py-8 bg-[#FBFBFA]/60 text-xs text-[#65717D]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex flex-col sm:flex-row items-center sm:items-baseline gap-1.5 sm:gap-2 text-center sm:text-left">
-            <span className="font-semibold text-[#202B35] tracking-tight text-[13px]">Drishti AI</span>
-            <span className="hidden sm:inline text-[#B8C2BC]">•</span>
-            <span className="text-[#65717D]">Explainable Job-Fit Intelligence &amp; Recruitment Analytics Platform</span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
+          <div className="flex flex-col sm:flex-row items-center sm:items-baseline gap-1.5 sm:gap-2">
+            <span className="font-semibold text-[#202B35] tracking-tight text-[13px] shrink-0">Drishti AI</span>
+            <span className="hidden sm:inline text-[#B8C2BC] shrink-0">•</span>
+            <span className="text-[#65717D] leading-relaxed break-words">
+              Explainable Job-Fit Intelligence &amp; Recruitment Analytics Platform
+            </span>
           </div>
-          <div className="text-[#65717D] text-center md:text-right font-medium">
+          <div className="text-[#65717D] font-medium text-xs md:text-right leading-relaxed break-words">
             Explainable Matching • Skill Gap Analysis • Fairness Insights
           </div>
         </div>
