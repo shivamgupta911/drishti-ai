@@ -54,21 +54,62 @@ export function auditDisparateImpact(evaluatedCohort, passThreshold = 65) {
     ? Math.max(...ratesWithCandidates.map((s) => s.rawRate))
     : 0;
 
-  // Compute 4/5ths impact ratio
+  // Compute 4/5ths impact ratio and statistical confidence intervals
   let adverseImpactDetected = false;
   const auditDetails = cohortStats.map((stat) => {
     let impactRatio = 1.0;
-    if (maxRate > 0 && stat.totalCandidates > 0) {
+    let impactRatioLabel = '1.00';
+    let isUndefined = false;
+
+    if (stat.totalCandidates === 0) {
+      impactRatio = null;
+      impactRatioLabel = 'N/A (Empty Cohort)';
+      isUndefined = true;
+    } else if (maxRate === 0) {
+      impactRatio = null;
+      impactRatioLabel = 'Undefined (0% Benchmark)';
+      isUndefined = true;
+    } else {
       impactRatio = Math.round((stat.rawRate / maxRate) * 100) / 100;
+      impactRatioLabel = impactRatio.toFixed(2);
     }
-    const satisfiesFourFifths = impactRatio >= 0.80 || stat.totalCandidates === 0 || stat.rawRate === maxRate;
+
+    // Four-fifths satisfaction
+    const satisfiesFourFifths = isUndefined || impactRatio >= 0.80 || stat.rawRate === maxRate;
     if (!satisfiesFourFifths) {
       adverseImpactDetected = true;
     }
+
+    // Statistical 95% Confidence Interval for Selection Rate
+    const n = stat.totalCandidates;
+    const p = stat.rawRate;
+    let marginOfError = 0;
+    let ciLower = 0;
+    let ciUpper = 0;
+
+    if (n > 0) {
+      const se = Math.sqrt((p * (1 - p)) / n);
+      marginOfError = Math.round(1.96 * se * 100);
+      ciLower = Math.max(0, stat.selectionRate - marginOfError);
+      ciUpper = Math.min(100, stat.selectionRate + marginOfError);
+    }
+
     return {
       ...stat,
       impactRatio,
+      impactRatioLabel,
+      isUndefined,
       satisfiesFourFifthsRule: satisfiesFourFifths,
+      confidenceInterval95: {
+        lower: ciLower,
+        upper: ciUpper,
+        marginOfError,
+      },
+      sampleSizeAdequate: n >= 5,
+      sampleSizeNote:
+        n < 5
+          ? `Small cohort size (n=${n}) warrants caution. The 4/5ths rule serves as a preliminary screening heuristic.`
+          : `Adequate statistical sample size (n=${n}).`,
     };
   });
 
@@ -85,6 +126,8 @@ export function auditDisparateImpact(evaluatedCohort, passThreshold = 65) {
     adverseImpactDetected,
     status: adverseImpactDetected ? 'potential_adverse_impact' : 'compliant',
     cohortBreakdown: auditDetails,
+    statisticalDisclaimer:
+      'The 80% Four-Fifths rule is a screening heuristic under EEOC Uniform Guidelines and NYC Local Law 144. It is not conclusive proof of discrimination or legal compliance, particularly in smaller sample sizes.',
     methodology:
       'Evaluations are deterministic attribute mappings based strictly on demonstrable skills and tenure duration. Demographic indicators and PII are masked prior to scoring.',
   };

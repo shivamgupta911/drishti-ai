@@ -2,15 +2,17 @@ import { Router } from 'express';
 import Resume from '../models/Resume.js';
 import Job from '../models/Job.js';
 import MatchResult from '../models/MatchResult.js';
+import EvaluationAudit from '../models/EvaluationAudit.js';
 import { evaluateMatch, rankCandidatesForJob, compareTwoCandidates } from '../services/matcher.service.js';
 import { parseResumeText, extractSkills, extractExperienceYears } from '../services/parser.service.js';
 import { auditDisparateImpact } from '../services/fairness.service.js';
+import { buildEvidenceDossier } from '../services/evidence.service.js';
 
 const router = Router();
 
 /**
  * POST /api/matches/evaluate
- * Compare candidate resume against job description and produce explainable audit
+ * Compare candidate resume against job description and produce explainable audit with evidence traces
  */
 router.post('/evaluate', async (req, res, next) => {
   try {
@@ -49,19 +51,44 @@ router.post('/evaluate', async (req, res, next) => {
     }
 
     const evaluation = evaluateMatch(resumeObj, jobObj);
+    const evidenceTraces = buildEvidenceDossier(resumeObj, jobObj, evaluation);
+    evaluation.evidenceTraces = evidenceTraces;
 
     let savedRecord = null;
+    let auditRecord = null;
     if (resumeObj._id && jobObj._id) {
       savedRecord = await MatchResult.create({
         resumeId: resumeObj._id,
         jobId: jobObj._id,
         ...evaluation,
       });
+
+      // Persist immutable EvaluationAudit record
+      auditRecord = await EvaluationAudit.create({
+        evaluationId: `EVAL-${savedRecord._id.toString().substring(18).toUpperCase()}-${Date.now().toString().slice(-4)}`,
+        matchResultId: savedRecord._id,
+        resumeId: resumeObj._id,
+        jobId: jobObj._id,
+        overallScore: evaluation.overallScore,
+        tier: evaluation.tier,
+        componentScores: evaluation.breakdown,
+        exactMatches: evaluation.exactMatches,
+        synonymMatches: evaluation.synonymMatches,
+        affinityMatches: evaluation.affinityMatches,
+        missingRequiredSkills: evaluation.missingRequiredSkills,
+        evidenceTraces,
+      });
+    }
+
+    const responseData = savedRecord ? savedRecord.toObject() : evaluation;
+    responseData.evidenceTraces = evidenceTraces;
+    if (auditRecord) {
+      responseData.evaluationId = auditRecord.evaluationId;
     }
 
     res.status(200).json({
       success: true,
-      data: savedRecord || evaluation,
+      data: responseData,
     });
   } catch (error) {
     next(error);

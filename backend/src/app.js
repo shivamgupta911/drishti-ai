@@ -6,6 +6,9 @@ import jobRoutes from './routes/job.routes.js';
 import matchRoutes from './routes/match.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import integrationRoutes from './routes/integration.routes.js';
+import analyticsRoutes from './routes/analytics.routes.js';
+import outcomeRoutes from './routes/outcome.routes.js';
+import auditRoutes from './routes/audit.routes.js';
 import { seedInitialData } from './config/seed.js';
 
 const app = express();
@@ -46,6 +49,9 @@ app.use('/api/resumes', resumeRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/matches', matchRoutes);
 app.use('/api/integrations', integrationRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/outcomes', outcomeRoutes);
+app.use('/api/audit-history', auditRoutes);
 
 // Seed sample data helper (supports programmatic POST and browser GET)
 const handleSeedRequest = async (req, res, next) => {

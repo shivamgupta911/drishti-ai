@@ -379,6 +379,158 @@ runTest('Buffer parser parses text document into structured candidate profile', 
   assert.ok(skillNames.includes('AWS'));
 });
 
+// ---------------------------------------------------------
+// 11. Evidence-Backed Resume Intelligence Tests
+// ---------------------------------------------------------
+import { findSkillEvidenceExcerpt, buildEvidenceDossier } from './src/services/evidence.service.js';
+
+runTest('Evidence extractor identifies verbatim sentence from experience description', () => {
+  const sampleResume = {
+    skills: [{ name: 'React' }],
+    experience: [
+      {
+        title: 'Full Stack Engineer',
+        company: 'CloudTech',
+        description: 'Engineered REST APIs with Express and microservices. Built responsive user interfaces in React.',
+        technologies: ['React', 'Express'],
+      },
+    ],
+  };
+
+  const evidence = findSkillEvidenceExcerpt(sampleResume, 'React');
+  assert.strictEqual(evidence.evidenceQuality, 'high');
+  assert.ok(evidence.excerpt.includes('Built responsive user interfaces in React'));
+  assert.ok(evidence.sourceSection.includes('CloudTech'));
+});
+
+runTest('Evidence dossier accurately categorizes exact, synonym, and missing requirements', () => {
+  const sampleResume = {
+    skills: [{ name: 'K8s' }, { name: 'Docker' }],
+    experience: [],
+  };
+  const sampleJob = {
+    requiredSkills: [{ name: 'Kubernetes' }, { name: 'Docker' }, { name: 'Terraform' }],
+  };
+  const mockMatch = {
+    exactMatches: ['Docker'],
+    synonymMatches: [{ candidateTerm: 'K8s', targetTerm: 'Kubernetes', attribution: 'standard synonym' }],
+    affinityMatches: [],
+  };
+
+  const dossier = buildEvidenceDossier(sampleResume, sampleJob, mockMatch);
+  assert.strictEqual(dossier.length, 3);
+  const k8sTrace = dossier.find((d) => d.requirement === 'Kubernetes');
+  assert.strictEqual(k8sTrace.category, 'synonym_match');
+  assert.strictEqual(k8sTrace.matchedTerm, 'K8s');
+
+  const dockerTrace = dossier.find((d) => d.requirement === 'Docker');
+  assert.strictEqual(dockerTrace.category, 'exact_match');
+
+  const tfTrace = dossier.find((d) => d.requirement === 'Terraform');
+  assert.strictEqual(tfTrace.category, 'missing');
+  assert.strictEqual(tfTrace.evidenceQuality, 'none');
+});
+
+// ---------------------------------------------------------
+// 12. What-If Scenario Simulator Tests
+// ---------------------------------------------------------
+import { simulateHiringScenario } from './src/services/simulator.service.js';
+
+runTest('What-If simulator rejects component weights that do not sum to 100%', () => {
+  const mockJob = { minExperienceYears: 3, requiredSkills: ['React'] };
+  assert.throws(
+    () => simulateHiringScenario([], mockJob, { weights: { skillsWeight: 0.5, experienceWeight: 0.2 } }),
+    /must sum to exactly 100%/i
+  );
+});
+
+runTest('What-If simulator recalculates ranks and explains shift dynamics', () => {
+  const candidateA = {
+    _id: 'candA',
+    candidateName: 'Candidate A (Tenured)',
+    totalExperienceYears: 8,
+    skills: [{ name: 'React' }],
+  };
+  const candidateB = {
+    _id: 'candB',
+    candidateName: 'Candidate B (Skills Heavy)',
+    totalExperienceYears: 1,
+    skills: [{ name: 'React' }, { name: 'Node.js' }, { name: 'MongoDB' }],
+  };
+  const job = {
+    minExperienceYears: 5,
+    requiredSkills: [{ name: 'React' }, { name: 'Node.js' }, { name: 'MongoDB' }],
+    preferredSkills: [],
+  };
+
+  // Run simulation with heavier weight on Experience
+  const simResult = simulateHiringScenario([candidateA, candidateB], job, {
+    weights: { skillsWeight: 0.20, experienceWeight: 0.60, semanticWeight: 0.15, preferredWeight: 0.05 },
+    minExperienceOverride: 5,
+  });
+
+  assert.strictEqual(simResult.results.length, 2);
+  const tenured = simResult.results.find((c) => c.candidateId === 'candA');
+  assert.ok(tenured.simulatedScore > 0);
+  assert.ok(tenured.shiftExplanation.length > 0);
+});
+
+// ---------------------------------------------------------
+// 13. Model Evaluation Laboratory Tests
+// ---------------------------------------------------------
+import { runModelEvaluationLaboratory } from './src/services/evaluation.service.js';
+
+runTest('Model evaluation computes NDCG, Precision, Recall, and error analysis', () => {
+  const report = runModelEvaluationLaboratory();
+  assert.strictEqual(report.benchmarkDatasetSize > 0, true);
+  assert.strictEqual(report.modelsEvaluated.length, 4);
+
+  const hybrid = report.modelsEvaluated.find((m) => m.modelId === 'drishti_hybrid');
+  assert.ok(hybrid.metrics.ndcgAt3 > 0);
+  assert.ok(hybrid.metrics.precisionAt1 > 0);
+  assert.ok(hybrid.metrics.mrr > 0);
+  assert.ok(Array.isArray(hybrid.errorAnalysis.falsePositiveExamples));
+});
+
+// ---------------------------------------------------------
+// 14. Skill Relationship Network Graph Tests
+// ---------------------------------------------------------
+import { buildSkillOntologyGraph } from './src/services/network.service.js';
+
+runTest('Network graph builds nodes and links with domain affinities and prerequisite edges', () => {
+  const mockResumes = [{ skills: [{ name: 'JavaScript' }, { name: 'React' }] }];
+  const mockJobs = [{ requiredSkills: [{ name: 'TypeScript' }] }];
+
+  const graph = buildSkillOntologyGraph(mockResumes, mockJobs);
+  assert.ok(graph.nodes.length > 0);
+  assert.ok(graph.links.length > 0);
+
+  const tsLink = graph.links.find(
+    (l) => (l.source === 'typescript' && l.target === 'javascript') || (l.source === 'javascript' && l.target === 'typescript')
+  );
+  assert.ok(tsLink !== undefined);
+  assert.strictEqual(tsLink.type, 'prerequisite');
+});
+
+// ---------------------------------------------------------
+// 15. Statistical Fairness Guard Corner Case Tests
+// ---------------------------------------------------------
+runTest('Fairness auditor flags small sample size and handles undefined zero-pass benchmark', () => {
+  const smallCohort = [
+    { candidateName: 'C1', totalExperienceYears: 1, overallScore: 40 },
+    { candidateName: 'C2', totalExperienceYears: 1, overallScore: 35 },
+  ];
+
+  const audit = auditDisparateImpact(smallCohort, 65);
+  assert.strictEqual(audit.highestSelectionRate, 0);
+  assert.ok(audit.statisticalDisclaimer.includes('screening heuristic'));
+
+  const junior = audit.cohortBreakdown.find((c) => c.key === 'junior');
+  assert.strictEqual(junior.sampleSizeAdequate, false);
+  assert.ok(junior.sampleSizeNote.includes('Small cohort size'));
+  assert.strictEqual(junior.isUndefined, true);
+});
+
 console.log('\n====================================================');
 console.log(`TEST SUMMARY: ${passedTests} / ${totalTests} TESTS PASSED`);
 console.log('====================================================');

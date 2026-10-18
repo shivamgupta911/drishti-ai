@@ -1,13 +1,21 @@
 import Resume from '../models/Resume.js';
 import Job from '../models/Job.js';
 import User from '../models/User.js';
+import MatchResult from '../models/MatchResult.js';
+import EvaluationAudit from '../models/EvaluationAudit.js';
+import RecruitmentOutcome from '../models/RecruitmentOutcome.js';
 import { generateSalt, hashPassword } from '../middleware/auth.middleware.js';
+import { evaluateMatch } from '../services/matcher.service.js';
+import { buildEvidenceDossier } from '../services/evidence.service.js';
 
 export async function seedInitialData() {
   // Always clear and seed fresh rich dataset for Day 3 verification
   await Resume.deleteMany({});
   await Job.deleteMany({});
   await User.deleteMany({});
+  await MatchResult.deleteMany({});
+  await EvaluationAudit.deleteMany({});
+  await RecruitmentOutcome.deleteMany({});
 
   // Seed RBAC Users
   const recSalt = generateSalt();
@@ -209,10 +217,69 @@ export async function seedInitialData() {
     ],
   });
 
+  // Pre-calculate evaluation records, evidence traces, and recruitment outcomes
+  const candidateJobPairs = [
+    { resume: candidate1, job: job1, stage: 'interviewed', techRating: 4, cultRating: 5, notes: 'Strong full-stack acumen with Node.js & React.' },
+    { resume: candidate2, job: job1, stage: 'pending', techRating: 3, cultRating: 4, notes: 'Good frontend base, lacks backend Node.js duration.' },
+    { resume: candidate3, job: job1, stage: 'shortlisted', techRating: 4, cultRating: 4, notes: 'Deep infrastructure background with transferable backend skills.' },
+    { resume: candidate3, job: job2, stage: 'hired', techRating: 5, cultRating: 5, notes: 'Exceptional SRE & Kubernetes cluster architecture.' },
+    { resume: candidate1, job: job2, stage: 'rejected', techRating: 2, cultRating: 4, dispositionReason: 'Insufficient multi-region cloud & Terraform experience.' },
+  ];
+
+  const seededMatches = [];
+  for (const pair of candidateJobPairs) {
+    const evalData = evaluateMatch(pair.resume, pair.job);
+    const evidenceTraces = buildEvidenceDossier(pair.resume, pair.job, evalData);
+    evalData.evidenceTraces = evidenceTraces;
+
+    const matchRecord = await MatchResult.create({
+      resumeId: pair.resume._id,
+      jobId: pair.job._id,
+      ...evalData,
+    });
+    seededMatches.push(matchRecord);
+
+    await EvaluationAudit.create({
+      evaluationId: `EVAL-${matchRecord._id.toString().substring(18).toUpperCase()}-${Math.floor(Math.random() * 9000 + 1000)}`,
+      matchResultId: matchRecord._id,
+      resumeId: pair.resume._id,
+      jobId: pair.job._id,
+      overallScore: evalData.overallScore,
+      tier: evalData.tier,
+      componentScores: evalData.breakdown,
+      exactMatches: evalData.exactMatches,
+      synonymMatches: evalData.synonymMatches,
+      affinityMatches: evalData.affinityMatches,
+      missingRequiredSkills: evalData.missingRequiredSkills,
+      evidenceTraces,
+    });
+
+    await RecruitmentOutcome.create({
+      resumeId: pair.resume._id,
+      jobId: pair.job._id,
+      matchResultId: matchRecord._id,
+      stage: pair.stage,
+      predictedScore: evalData.overallScore,
+      predictedTier: evalData.tier,
+      recruiterFeedback: {
+        technicalCompetencyRating: pair.techRating,
+        culturalAlignmentRating: pair.cultRating,
+        notes: pair.notes || '',
+        dispositionReason: pair.dispositionReason || '',
+      },
+      recordedBy: {
+        userId: recruiter._id.toString(),
+        userName: recruiter.name,
+        userRole: recruiter.role,
+      },
+    });
+  }
+
   return {
-    message: 'Sample candidates, job postings, and RBAC users seeded successfully.',
+    message: 'Sample candidates, job postings, RBAC users, and evaluation audits seeded successfully.',
     resumes: [candidate1._id, candidate2._id, candidate3._id],
     jobs: [job1._id, job2._id],
     users: [recruiter._id, manager._id, candidateUser._id],
+    matchesCount: seededMatches.length,
   };
 }

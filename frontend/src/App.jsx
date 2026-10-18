@@ -21,12 +21,20 @@ import {
   Download,
   Send,
   UserCheck,
-  Users
+  Users,
+  History,
+  Sliders,
+  GitBranch
 } from 'lucide-react';
 import { getApiUrl, safeParseResponse } from './config/api';
+import EvidencePanel from './components/EvidencePanel';
+import WhatIfSimulator from './components/WhatIfSimulator';
+import AnalyticsLab from './components/AnalyticsLab';
+import AuditHistoryModal from './components/AuditHistoryModal';
+import OutcomeTracker from './components/OutcomeTracker';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('matcher'); // 'matcher' | 'leaderboard' | 'comparison' | 'fairness' | 'resumes' | 'jobs' | 'system'
+  const [activeTab, setActiveTab] = useState('matcher'); // 'matcher' | 'leaderboard' | 'comparison' | 'analytics' | 'simulator' | 'outcomes' | 'fairness' | 'resumes' | 'jobs' | 'system'
   
   // Health telemetry state
   const [healthData, setHealthData] = useState(null);
@@ -60,6 +68,9 @@ export default function App() {
 
   // Audit Dossier Modal state
   const [activeDossier, setActiveDossier] = useState(null);
+
+  // Audit History Modal state
+  const [auditModalOpen, setAuditModalOpen] = useState(false);
 
   // Active RBAC user persona
   const [activeUser, setActiveUser] = useState({
@@ -428,10 +439,10 @@ export default function App() {
 
       {/* Primary Application Header */}
       <header className="border-b border-[#DDE3E1] bg-white sticky top-0 z-40 shadow-xs">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
           
           {/* Brand Identity */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 shrink-0">
             <div className="h-9 w-9 rounded-lg bg-[#E5F3EF] border border-[#187D70]/20 flex items-center justify-center text-[#187D70] shrink-0">
               <Target className="w-5 h-5 stroke-[2.2]" />
             </div>
@@ -446,10 +457,10 @@ export default function App() {
           </div>
 
           {/* Desktop Navigation Tabs */}
-          <nav aria-label="Main Navigation" className="hidden lg:flex items-center gap-1 text-xs">
+          <nav aria-label="Main Navigation" className="hidden lg:flex items-center gap-1 text-xs overflow-x-auto py-1">
             <button
               onClick={() => setActiveTab('matcher')}
-              className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
+              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 ${
                 activeTab === 'matcher'
                   ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
                   : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
@@ -459,7 +470,7 @@ export default function App() {
             </button>
             <button
               onClick={() => setActiveTab('leaderboard')}
-              className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
                 activeTab === 'leaderboard'
                   ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
                   : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
@@ -470,7 +481,7 @@ export default function App() {
             </button>
             <button
               onClick={() => setActiveTab('comparison')}
-              className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
                 activeTab === 'comparison'
                   ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
                   : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
@@ -480,19 +491,52 @@ export default function App() {
               <span>Compare</span>
             </button>
             <button
+              onClick={() => setActiveTab('analytics')}
+              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
+                activeTab === 'analytics'
+                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
+                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5 text-[#187D70]" />
+              <span>Analytics Lab</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('simulator')}
+              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
+                activeTab === 'simulator'
+                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
+                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5 text-[#187D70]" />
+              <span>What-If</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('outcomes')}
+              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
+                activeTab === 'outcomes'
+                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
+                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
+              }`}
+            >
+              <GitBranch className="w-3.5 h-3.5 text-[#187D70]" />
+              <span>Pipeline</span>
+            </button>
+            <button
               onClick={() => setActiveTab('fairness')}
-              className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
                 activeTab === 'fairness'
                   ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
                   : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
               }`}
             >
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Fairness &amp; Audit</span>
+              <span>Fairness</span>
             </button>
             <button
               onClick={() => setActiveTab('resumes')}
-              className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
+              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 ${
                 activeTab === 'resumes'
                   ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
                   : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
@@ -502,7 +546,7 @@ export default function App() {
             </button>
             <button
               onClick={() => setActiveTab('jobs')}
-              className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
+              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 ${
                 activeTab === 'jobs'
                   ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
                   : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
@@ -512,21 +556,30 @@ export default function App() {
             </button>
             <button
               onClick={() => setActiveTab('system')}
-              className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
                 activeTab === 'system'
                   ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
                   : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
               }`}
             >
-              <Activity className="w-3.5 h-3.5" />
               <span>Telemetry</span>
             </button>
           </nav>
 
           {/* Actions & Persona Control */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Audit History Ledger Trigger */}
+            <button
+              onClick={() => setAuditModalOpen(true)}
+              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] text-[#202B35] text-xs font-medium transition shadow-xs cursor-pointer"
+              title="Audit History & Recruiter Override Ledger"
+            >
+              <History className="w-3.5 h-3.5 text-[#187D70]" />
+              <span className="hidden xl:inline">Audit Ledger</span>
+            </button>
+
             {/* User Persona Switcher */}
-            <div className="hidden xl:flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#F5F6F3] border border-[#DDE3E1] text-xs">
+            <div className="hidden 2xl:flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#F5F6F3] border border-[#DDE3E1] text-xs">
               <UserCheck className="w-3.5 h-3.5 text-[#187D70]" />
               <select
                 value={activeUser.role}
@@ -553,7 +606,7 @@ export default function App() {
             <button
               onClick={handleSeedData}
               disabled={loadingData}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] text-[#202B35] text-xs font-medium transition disabled:opacity-50 shadow-xs"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] text-[#202B35] text-xs font-medium transition disabled:opacity-50 shadow-xs cursor-pointer"
               title="Populate test candidates with technical synonyms and jobs"
             >
               <Zap className={`w-3.5 h-3.5 text-[#A96512] ${loadingData ? 'animate-pulse' : ''}`} />
@@ -595,7 +648,7 @@ export default function App() {
             <button
               onClick={() => { checkHealth(); fetchResumesAndJobs(); }}
               disabled={loadingData}
-              className="p-1.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] text-[#65717D] hover:text-[#202B35] transition disabled:opacity-50 shadow-xs"
+              className="p-1.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] text-[#65717D] hover:text-[#202B35] transition disabled:opacity-50 shadow-xs cursor-pointer"
               title="Refresh connection status & records"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${healthStatus === 'checking' || loadingData ? 'animate-spin text-[#187D70]' : ''}`} />
@@ -624,6 +677,24 @@ export default function App() {
             Compare
           </button>
           <button
+            onClick={() => setActiveTab('analytics')}
+            className={`px-3 py-1.5 rounded-md shrink-0 font-medium ${activeTab === 'analytics' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#65717D]'}`}
+          >
+            Analytics Lab
+          </button>
+          <button
+            onClick={() => setActiveTab('simulator')}
+            className={`px-3 py-1.5 rounded-md shrink-0 font-medium ${activeTab === 'simulator' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#65717D]'}`}
+          >
+            What-If
+          </button>
+          <button
+            onClick={() => setActiveTab('outcomes')}
+            className={`px-3 py-1.5 rounded-md shrink-0 font-medium ${activeTab === 'outcomes' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#65717D]'}`}
+          >
+            Pipeline
+          </button>
+          <button
             onClick={() => setActiveTab('fairness')}
             className={`px-3 py-1.5 rounded-md shrink-0 font-medium ${activeTab === 'fairness' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#65717D]'}`}
           >
@@ -647,11 +718,17 @@ export default function App() {
           >
             Telemetry
           </button>
+          <button
+            onClick={() => setAuditModalOpen(true)}
+            className="px-3 py-1.5 rounded-md shrink-0 font-medium text-[#187D70] bg-[#E5F3EF]"
+          >
+            Audit Ledger
+          </button>
         </div>
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         
         {/* ============================================================== */}
         {/* TAB 1: MATCH STUDIO (PRIMARY EXPERIENCE)                      */}
@@ -1067,6 +1144,12 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Evidence-Backed Source Excerpts & Verifiable Citations */}
+                <EvidencePanel
+                  traces={matchResult.evidenceTraces || []}
+                  candidateName={resumes.find((r) => r._id === selectedResumeId)?.candidateName}
+                />
+
                 {/* Actions & Regulatory Dossier Export */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-[#F5F6F3] border border-[#DDE3E1] text-xs">
                   <div className="flex items-center gap-3">
@@ -1099,6 +1182,15 @@ export default function App() {
                       >
                         <Send className="w-3.5 h-3.5 text-[#187D70]" />
                         <span>ATS Webhook</span>
+                      </button>
+
+                      <button
+                        onClick={() => setAuditModalOpen(true)}
+                        className="px-3 py-1.5 rounded-lg bg-white border border-[#DDE3E1] hover:bg-[#EEF2F1] text-[#202B35] font-medium flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                        title="View immutable evaluation audit record and log recruiter overrides"
+                      >
+                        <History className="w-3.5 h-3.5 text-[#187D70]" />
+                        <span>Audit Ledger</span>
                       </button>
 
                       <button
@@ -1456,7 +1548,54 @@ export default function App() {
         )}
 
         {/* ============================================================== */}
-        {/* TAB 4: FAIRNESS & DISPARATE IMPACT AUDIT (EEOC 4/5ths)          */}
+        {/* TAB 4: GRAPH-BASED ANALYTICS LABORATORY                        */}
+        {/* ============================================================== */}
+        {activeTab === 'analytics' && (
+          <AnalyticsLab
+            jobs={jobs}
+            selectedJobId={selectedJobId || leaderboardJobId}
+            onSelectCandidate={(candId) => {
+              setSelectedResumeId(candId);
+              setActiveTab('matcher');
+            }}
+            onSelectJob={(jId) => {
+              setSelectedJobId(jId);
+              setLeaderboardJobId(jId);
+            }}
+            showBanner={showBanner}
+          />
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 5: WHAT-IF HIRING POLICY SIMULATOR                         */}
+        {/* ============================================================== */}
+        {activeTab === 'simulator' && (
+          <WhatIfSimulator
+            jobs={jobs}
+            selectedJobId={selectedJobId || leaderboardJobId}
+            onSelectJob={(jId) => {
+              setSelectedJobId(jId);
+              setLeaderboardJobId(jId);
+            }}
+            showBanner={showBanner}
+          />
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 6: RECRUITMENT OUTCOME & PIPELINE TRACKER                  */}
+        {/* ============================================================== */}
+        {activeTab === 'outcomes' && (
+          <OutcomeTracker
+            candidates={resumes}
+            jobs={jobs}
+            selectedJobId={selectedJobId || leaderboardJobId}
+            showBanner={showBanner}
+            activeUser={activeUser}
+          />
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 7: FAIRNESS & DISPARATE IMPACT AUDIT (EEOC 4/5ths)          */}
         {/* ============================================================== */}
         {activeTab === 'fairness' && (
           <div className="space-y-8">
@@ -2159,9 +2298,20 @@ export default function App() {
         </div>
       )}
 
+      {/* ============================================================== */}
+      {/* MODAL 3: AUDIT HISTORY & RECRUITER OVERRIDE LEDGER             */}
+      {/* ============================================================== */}
+      <AuditHistoryModal
+        isOpen={auditModalOpen}
+        onClose={() => setAuditModalOpen(false)}
+        selectedJobId={selectedJobId || leaderboardJobId}
+        showBanner={showBanner}
+        activeUser={activeUser}
+      />
+
       {/* Application Footer */}
       <footer className="border-t border-[#DDE3E1] mt-20 py-8 text-center text-xs text-[#65717D]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-[#202B35]">Drishti AI</span>
             <span>•</span>
