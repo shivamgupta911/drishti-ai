@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   FileText, 
   Briefcase, 
@@ -24,7 +24,9 @@ import {
   Users,
   History,
   Sliders,
-  GitBranch
+  GitBranch,
+  ChevronDown,
+  MoreHorizontal
 } from 'lucide-react';
 import { getApiUrl, safeParseResponse } from './config/api';
 import EvidencePanel from './components/EvidencePanel';
@@ -36,6 +38,20 @@ import OutcomeTracker from './components/OutcomeTracker';
 export default function App() {
   const [activeTab, setActiveTab] = useState('matcher'); // 'matcher' | 'leaderboard' | 'comparison' | 'analytics' | 'simulator' | 'outcomes' | 'fairness' | 'resumes' | 'jobs' | 'system'
   
+  // Header dropdown state
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
+        setMoreMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
   // Health telemetry state
   const [healthData, setHealthData] = useState(null);
   const [healthStatus, setHealthStatus] = useState('checking'); // 'checking' | 'healthy' | 'error'
@@ -439,7 +455,7 @@ export default function App() {
 
       {/* Primary Application Header */}
       <header className="border-b border-[#DDE3E1] bg-white sticky top-0 z-40 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2.5 xl:gap-4">
           
           {/* Brand Identity */}
           <div className="flex items-center gap-2.5 shrink-0">
@@ -457,130 +473,175 @@ export default function App() {
           </div>
 
           {/* Desktop Navigation Tabs */}
-          <nav aria-label="Main Navigation" className="hidden lg:flex items-center gap-1 text-xs overflow-x-auto py-1">
+          <nav aria-label="Main Navigation" className="hidden lg:flex items-center gap-1 xl:gap-1.5 text-xs">
             <button
               onClick={() => setActiveTab('matcher')}
-              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 ${
+              className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
                 activeTab === 'matcher'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
+                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
+                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
               }`}
             >
-              Match Studio
+              <Target className="w-3.5 h-3.5 shrink-0" />
+              <span>Match Studio</span>
             </button>
             <button
               onClick={() => setActiveTab('leaderboard')}
-              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
+              className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
                 activeTab === 'leaderboard'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
+                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
+                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
               }`}
             >
-              <BarChart3 className="w-3.5 h-3.5" />
+              <BarChart3 className="w-3.5 h-3.5 shrink-0" />
               <span>Leaderboard</span>
             </button>
             <button
               onClick={() => setActiveTab('comparison')}
-              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
+              className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
                 activeTab === 'comparison'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
+                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
+                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
               }`}
             >
-              <Scale className="w-3.5 h-3.5" />
+              <Scale className="w-3.5 h-3.5 shrink-0" />
               <span>Compare</span>
             </button>
             <button
               onClick={() => setActiveTab('analytics')}
-              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
+              className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
                 activeTab === 'analytics'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
+                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
+                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
               }`}
             >
-              <Activity className="w-3.5 h-3.5 text-[#187D70]" />
+              <Activity className="w-3.5 h-3.5 shrink-0" />
               <span>Analytics Lab</span>
             </button>
             <button
               onClick={() => setActiveTab('simulator')}
-              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
+              className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
                 activeTab === 'simulator'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
+                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
+                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
               }`}
             >
-              <Sliders className="w-3.5 h-3.5 text-[#187D70]" />
+              <Sliders className="w-3.5 h-3.5 shrink-0" />
               <span>What-If</span>
             </button>
             <button
               onClick={() => setActiveTab('outcomes')}
-              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
+              className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
                 activeTab === 'outcomes'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
+                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
+                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
               }`}
             >
-              <GitBranch className="w-3.5 h-3.5 text-[#187D70]" />
+              <GitBranch className="w-3.5 h-3.5 shrink-0" />
               <span>Pipeline</span>
             </button>
             <button
               onClick={() => setActiveTab('fairness')}
-              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
+              className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${
                 activeTab === 'fairness'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
+                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
+                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
               }`}
             >
-              <ShieldCheck className="w-3.5 h-3.5" />
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
               <span>Fairness</span>
             </button>
-            <button
-              onClick={() => setActiveTab('resumes')}
-              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 ${
-                activeTab === 'resumes'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
-              }`}
-            >
-              Resumes ({resumes.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('jobs')}
-              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 ${
-                activeTab === 'jobs'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
-              }`}
-            >
-              Jobs ({jobs.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('system')}
-              className={`px-2.5 py-1.5 rounded-md font-medium transition-colors shrink-0 flex items-center gap-1.5 ${
-                activeTab === 'system'
-                  ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20'
-                  : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1]'
-              }`}
-            >
-              <span>Telemetry</span>
-            </button>
+
+            {/* Responsive Secondary Tabs: More Dropdown */}
+            <div className="relative shrink-0" ref={moreMenuRef}>
+              <button
+                onClick={() => setMoreMenuOpen(!moreMenuOpen)}
+                aria-expanded={moreMenuOpen}
+                aria-haspopup="true"
+                className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
+                  ['resumes', 'jobs', 'system'].includes(activeTab)
+                    ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/25 shadow-2xs'
+                    : 'text-[#65717D] hover:text-[#202B35] hover:bg-[#EEF2F1] border border-transparent'
+                }`}
+              >
+                <MoreHorizontal className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  {activeTab === 'resumes'
+                    ? `Resumes (${resumes.length})`
+                    : activeTab === 'jobs'
+                    ? `Jobs (${jobs.length})`
+                    : activeTab === 'system'
+                    ? 'Telemetry'
+                    : 'More'}
+                </span>
+                <ChevronDown className={`w-3 h-3 shrink-0 transition-transform duration-150 ${moreMenuOpen ? 'rotate-180 text-[#187D70]' : ''}`} />
+              </button>
+
+              {moreMenuOpen && (
+                <div className="absolute right-0 top-full mt-1.5 w-48 bg-white rounded-xl border border-[#DDE3E1] shadow-lg py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
+                  <button
+                    onClick={() => { setActiveTab('resumes'); setMoreMenuOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2 text-xs transition-colors cursor-pointer ${
+                      activeTab === 'resumes' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#202B35] hover:bg-[#F5F6F3]'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <FileText className="w-3.5 h-3.5 text-[#187D70]" />
+                      <span>Resumes</span>
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#EEF2F1] text-[#65717D] font-mono">
+                      {resumes.length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => { setActiveTab('jobs'); setMoreMenuOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2 text-xs transition-colors cursor-pointer ${
+                      activeTab === 'jobs' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#202B35] hover:bg-[#F5F6F3]'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Briefcase className="w-3.5 h-3.5 text-[#187D70]" />
+                      <span>Job Postings</span>
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#EEF2F1] text-[#65717D] font-mono">
+                      {jobs.length}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => { setActiveTab('system'); setMoreMenuOpen(false); }}
+                    className={`w-full flex items-center gap-2 px-3.5 py-2 text-xs transition-colors cursor-pointer ${
+                      activeTab === 'system' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#202B35] hover:bg-[#F5F6F3]'
+                    }`}
+                  >
+                    <Activity className="w-3.5 h-3.5 text-[#187D70]" />
+                    <span>System Telemetry</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </nav>
 
+          {/* Visual Divider between Navigation and Utility Actions */}
+          <div className="hidden lg:block h-5 w-px bg-[#DDE3E1] shrink-0" aria-hidden="true" />
+
           {/* Actions & Persona Control */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Audit History Ledger Trigger */}
             <button
               onClick={() => setAuditModalOpen(true)}
-              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] text-[#202B35] text-xs font-medium transition shadow-xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] text-[#202B35] text-xs font-medium transition shadow-2xs cursor-pointer shrink-0"
               title="Audit History & Recruiter Override Ledger"
             >
-              <History className="w-3.5 h-3.5 text-[#187D70]" />
+              <History className="w-3.5 h-3.5 text-[#187D70] shrink-0" />
               <span className="hidden xl:inline">Audit Ledger</span>
+              <span className="xl:hidden hidden sm:inline">Audit</span>
             </button>
 
             {/* User Persona Switcher */}
-            <div className="hidden 2xl:flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#F5F6F3] border border-[#DDE3E1] text-xs">
-              <UserCheck className="w-3.5 h-3.5 text-[#187D70]" />
+            <div className="hidden 2xl:flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#F5F6F3] border border-[#DDE3E1] text-xs shrink-0">
+              <UserCheck className="w-3.5 h-3.5 text-[#187D70] shrink-0" />
               <select
                 value={activeUser.role}
                 onChange={(e) => {
@@ -606,16 +667,17 @@ export default function App() {
             <button
               onClick={handleSeedData}
               disabled={loadingData}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] text-[#202B35] text-xs font-medium transition disabled:opacity-50 shadow-xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] text-[#202B35] text-xs font-medium transition disabled:opacity-50 shadow-2xs cursor-pointer shrink-0"
               title="Populate test candidates with technical synonyms and jobs"
             >
-              <Zap className={`w-3.5 h-3.5 text-[#A96512] ${loadingData ? 'animate-pulse' : ''}`} />
-              <span className="hidden sm:inline">{loadingData ? 'Seeding...' : 'Seed Data'}</span>
+              <Zap className={`w-3.5 h-3.5 text-[#A96512] shrink-0 ${loadingData ? 'animate-pulse' : ''}`} />
+              <span className="hidden xl:inline">{loadingData ? 'Seeding...' : 'Seed Data'}</span>
+              <span className="xl:hidden hidden sm:inline">{loadingData ? '...' : 'Seed'}</span>
             </button>
 
             {/* Connection Status Indicator */}
             <div
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#DDE3E1] bg-[#F5F6F3] text-xs"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#DDE3E1] bg-[#F5F6F3] text-xs shrink-0"
               title={
                 healthStatus === 'healthy'
                   ? `Backend connected (${latency ? `${latency}ms` : 'operational'})`
@@ -626,20 +688,20 @@ export default function App() {
             >
               {healthStatus === 'healthy' ? (
                 <>
-                  <span className="w-2 h-2 rounded-full bg-[#187D58]" />
-                  <span className="text-[#187D58] font-medium text-[11px] hidden sm:inline">
+                  <span className="w-2 h-2 rounded-full bg-[#187D58] shrink-0" />
+                  <span className="text-[#187D58] font-medium text-[11px] hidden sm:inline whitespace-nowrap">
                     {healthData?.database?.type === 'in-memory (local-development-only)' ? 'Local Dev DB' : 'Connected'}
                   </span>
                 </>
               ) : healthStatus === 'checking' ? (
                 <>
-                  <span className="w-2 h-2 rounded-full bg-[#A96512] animate-pulse" />
-                  <span className="text-[#A96512] font-medium text-[11px] hidden sm:inline">Connecting...</span>
+                  <span className="w-2 h-2 rounded-full bg-[#A96512] animate-pulse shrink-0" />
+                  <span className="text-[#A96512] font-medium text-[11px] hidden sm:inline whitespace-nowrap">Connecting...</span>
                 </>
               ) : (
                 <>
-                  <span className="w-2 h-2 rounded-full bg-[#BD4148]" />
-                  <span className="text-[#BD4148] font-medium text-[11px] hidden sm:inline">Offline</span>
+                  <span className="w-2 h-2 rounded-full bg-[#BD4148] shrink-0" />
+                  <span className="text-[#BD4148] font-medium text-[11px] hidden sm:inline whitespace-nowrap">Offline</span>
                 </>
               )}
             </div>
@@ -648,10 +710,10 @@ export default function App() {
             <button
               onClick={() => { checkHealth(); fetchResumesAndJobs(); }}
               disabled={loadingData}
-              className="p-1.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] text-[#65717D] hover:text-[#202B35] transition disabled:opacity-50 shadow-xs cursor-pointer"
+              className="p-1.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] text-[#65717D] hover:text-[#202B35] transition disabled:opacity-50 shadow-2xs cursor-pointer shrink-0"
               title="Refresh connection status & records"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${healthStatus === 'checking' || loadingData ? 'animate-spin text-[#187D70]' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${healthStatus === 'checking' || loadingData ? 'animate-spin text-[#187D70]' : ''}`} />
             </button>
           </div>
         </div>
@@ -660,69 +722,100 @@ export default function App() {
         <div className="lg:hidden flex border-t border-[#DDE3E1] px-4 py-2 gap-1.5 overflow-x-auto text-xs bg-white">
           <button
             onClick={() => setActiveTab('matcher')}
-            className={`px-3 py-1.5 rounded-md shrink-0 font-medium ${activeTab === 'matcher' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#65717D]'}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
+              activeTab === 'matcher' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
+            }`}
           >
-            Match Studio
+            <Target className="w-3.5 h-3.5" />
+            <span>Match Studio</span>
           </button>
           <button
             onClick={() => setActiveTab('leaderboard')}
-            className={`px-3 py-1.5 rounded-md shrink-0 font-medium ${activeTab === 'leaderboard' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#65717D]'}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
+              activeTab === 'leaderboard' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
+            }`}
           >
-            Leaderboard
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>Leaderboard</span>
           </button>
           <button
             onClick={() => setActiveTab('comparison')}
-            className={`px-3 py-1.5 rounded-md shrink-0 font-medium ${activeTab === 'comparison' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#65717D]'}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
+              activeTab === 'comparison' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
+            }`}
           >
-            Compare
+            <Scale className="w-3.5 h-3.5" />
+            <span>Compare</span>
           </button>
           <button
             onClick={() => setActiveTab('analytics')}
-            className={`px-3 py-1.5 rounded-md shrink-0 font-medium ${activeTab === 'analytics' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#65717D]'}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
+              activeTab === 'analytics' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
+            }`}
           >
-            Analytics Lab
+            <Activity className="w-3.5 h-3.5 text-[#187D70]" />
+            <span>Analytics Lab</span>
           </button>
           <button
             onClick={() => setActiveTab('simulator')}
-            className={`px-3 py-1.5 rounded-md shrink-0 font-medium ${activeTab === 'simulator' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#65717D]'}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
+              activeTab === 'simulator' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
+            }`}
           >
-            What-If
+            <Sliders className="w-3.5 h-3.5 text-[#187D70]" />
+            <span>What-If</span>
           </button>
           <button
             onClick={() => setActiveTab('outcomes')}
-            className={`px-3 py-1.5 rounded-md shrink-0 font-medium ${activeTab === 'outcomes' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#65717D]'}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
+              activeTab === 'outcomes' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
+            }`}
           >
-            Pipeline
+            <GitBranch className="w-3.5 h-3.5 text-[#187D70]" />
+            <span>Pipeline</span>
           </button>
           <button
             onClick={() => setActiveTab('fairness')}
-            className={`px-3 py-1.5 rounded-md shrink-0 font-medium ${activeTab === 'fairness' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#65717D]'}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
+              activeTab === 'fairness' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
+            }`}
           >
-            Fairness
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Fairness</span>
           </button>
           <button
             onClick={() => setActiveTab('resumes')}
-            className={`px-3 py-1.5 rounded-md shrink-0 font-medium ${activeTab === 'resumes' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#65717D]'}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
+              activeTab === 'resumes' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
+            }`}
           >
-            Resumes ({resumes.length})
+            <FileText className="w-3.5 h-3.5" />
+            <span>Resumes ({resumes.length})</span>
           </button>
           <button
             onClick={() => setActiveTab('jobs')}
-            className={`px-3 py-1.5 rounded-md shrink-0 font-medium ${activeTab === 'jobs' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#65717D]'}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
+              activeTab === 'jobs' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
+            }`}
           >
-            Jobs ({jobs.length})
+            <Briefcase className="w-3.5 h-3.5" />
+            <span>Jobs ({jobs.length})</span>
           </button>
           <button
             onClick={() => setActiveTab('system')}
-            className={`px-3 py-1.5 rounded-md shrink-0 font-medium ${activeTab === 'system' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold' : 'text-[#65717D]'}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium ${
+              activeTab === 'system' ? 'bg-[#E5F3EF] text-[#187D70] font-semibold border border-[#187D70]/20' : 'text-[#65717D]'
+            }`}
           >
-            Telemetry
+            <Activity className="w-3.5 h-3.5" />
+            <span>Telemetry</span>
           </button>
           <button
             onClick={() => setAuditModalOpen(true)}
-            className="px-3 py-1.5 rounded-md shrink-0 font-medium text-[#187D70] bg-[#E5F3EF]"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md shrink-0 font-medium text-[#187D70] bg-[#E5F3EF] border border-[#187D70]/20"
           >
-            Audit Ledger
+            <History className="w-3.5 h-3.5" />
+            <span>Audit Ledger</span>
           </button>
         </div>
       </header>
@@ -2310,15 +2403,15 @@ export default function App() {
       />
 
       {/* Application Footer */}
-      <footer className="border-t border-[#DDE3E1] mt-20 py-8 text-center text-xs text-[#65717D]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-[#202B35]">Drishti AI</span>
-            <span>•</span>
-            <span>Explainable Job-Fit Intelligence &amp; Recruitment Analytics Platform</span>
+      <footer className="border-t border-[#DDE3E1] mt-20 py-8 bg-[#FBFBFA]/60 text-xs text-[#65717D]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row items-center sm:items-baseline gap-1.5 sm:gap-2 text-center sm:text-left">
+            <span className="font-semibold text-[#202B35] tracking-tight text-[13px]">Drishti AI</span>
+            <span className="hidden sm:inline text-[#B8C2BC]">•</span>
+            <span className="text-[#65717D]">Explainable Job-Fit Intelligence &amp; Recruitment Analytics Platform</span>
           </div>
-          <div className="text-[#65717D]">
-            Deterministic Matching • EEOC AEDT Compliant • RBAC • TF-IDF Vectors
+          <div className="text-[#65717D] text-center md:text-right font-medium">
+            Explainable Matching • Skill Gap Analysis • Fairness Insights
           </div>
         </div>
       </footer>
