@@ -47,15 +47,23 @@ app.use('/api/jobs', jobRoutes);
 app.use('/api/matches', matchRoutes);
 app.use('/api/integrations', integrationRoutes);
 
-// Seed sample data helper
-app.post('/api/seed', async (req, res, next) => {
+// Seed sample data helper (supports programmatic POST and browser GET)
+const handleSeedRequest = async (req, res, next) => {
   try {
     const result = await seedInitialData();
-    res.status(200).json({ success: true, ...result });
+    res.status(200).json({
+      success: true,
+      message: 'Sample candidates, job postings, and RBAC users seeded successfully.',
+      ...result,
+    });
   } catch (error) {
     next(error);
   }
-});
+};
+
+app.route('/api/seed')
+  .get(handleSeedRequest)
+  .post(handleSeedRequest);
 
 // Root route
 app.get('/', (req, res) => {
