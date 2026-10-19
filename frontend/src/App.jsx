@@ -28,9 +28,19 @@ import {
   ChevronDown,
   MoreHorizontal,
   Menu,
-  X
+  X,
+  LogIn,
+  LogOut,
+  Lock
 } from 'lucide-react';
-import { getApiUrl, safeParseResponse, requestDemoSession } from './config/api';
+import {
+  getApiUrl,
+  safeParseResponse,
+  requestDemoSession,
+  getAuthToken,
+  setAuthToken,
+  clearAuthToken
+} from './config/api';
 import EvidencePanel from './components/EvidencePanel';
 import WhatIfSimulator from './components/WhatIfSimulator';
 import AnalyticsLab from './components/AnalyticsLab';
@@ -199,13 +209,24 @@ export default function App() {
   // Audit History Modal state
   const [auditModalOpen, setAuditModalOpen] = useState(false);
 
-  // Active RBAC user persona
+  // Active RBAC user persona (defaults to public read-only demo persona)
   const [activeUser, setActiveUser] = useState({
     name: 'Sarah Connor',
     role: 'recruiter',
     title: 'Senior Talent Partner',
     email: 'recruiter@drishti.ai',
+    isDemo: true,
   });
+
+  // Authentication Modal state (Sign In & Workspace Registration)
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authName, setAuthName] = useState('');
+  const [authRole, setAuthRole] = useState('recruiter');
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [authError, setAuthError] = useState(null);
 
   // Fairness & Bias Audit state
   const [fairnessAuditData, setFairnessAuditData] = useState(null);
@@ -248,6 +269,7 @@ export default function App() {
         setMoreMenuOpen(false);
         setAuditModalOpen(false);
         setWebhookModalOpen(false);
+        setAuthModalOpen(false);
         setActiveDossier(null);
       }
     };
@@ -323,30 +345,33 @@ export default function App() {
   const handlePersonaChange = async (r) => {
     let newUser;
     if (r === 'recruiter') {
-      newUser = { name: 'Sarah Connor', role: 'recruiter', title: 'Senior Talent Partner', email: 'recruiter@drishti.ai' };
+      newUser = { name: 'Sarah Connor', role: 'recruiter', title: 'Senior Talent Partner', email: 'recruiter@drishti.ai', isDemo: true };
     } else if (r === 'hiring_manager') {
-      newUser = { name: 'David Vance', role: 'hiring_manager', title: 'VP Platform Engineering', email: 'manager@drishti.ai' };
-    } else if (r === 'admin') {
-      newUser = { name: 'Elena Rostova', role: 'admin', title: 'Compliance & Security Admin', email: 'admin@drishti.ai' };
+      newUser = { name: 'David Vance', role: 'hiring_manager', title: 'VP Platform Engineering', email: 'manager@drishti.ai', isDemo: true };
     } else {
-      newUser = { name: 'Alex Mercer', role: 'candidate', title: 'Candidate Profile', email: 'candidate@drishti.ai' };
+      newUser = { name: 'Alex Mercer', role: 'candidate', title: 'Candidate Profile', email: 'candidate@drishti.ai', isDemo: true };
     }
     setActiveUser(newUser);
-    showBanner(`Active persona: ${r.replace('_', ' ').toUpperCase()}`);
+    showBanner(`Active demo persona: ${r.replace('_', ' ').toUpperCase()}`);
     await requestDemoSession(r);
     await fetchResumesAndJobs();
   };
 
   const handleSeedData = async () => {
-    if (activeUser.role !== 'admin') {
-      showBanner('Database re-seed requires Admin role. Switch to the Admin persona.');
+    if (activeUser?.role !== 'admin' || activeUser?.isDemo) {
+      showBanner('Database re-seed requires an authenticated, non-demo Administrator account.');
       return;
     }
     setLoadingData(true);
     try {
+      const token = getAuthToken();
       const res = await fetch(getApiUrl('/api/seed'), {
         method: 'POST',
-        headers: { Accept: 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
       const data = await safeParseResponse(res);
       showBanner(data.message || 'Sample candidates and job postings seeded!');
@@ -357,6 +382,56 @@ export default function App() {
     } finally {
       setLoadingData(false);
     }
+  };
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthSubmitting(true);
+    setAuthError(null);
+    try {
+      if (authMode === 'login') {
+        const res = await fetch(getApiUrl('/api/auth/login'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ email: authEmail, password: authPassword }),
+        });
+        const data = await safeParseResponse(res);
+        setAuthToken(data.token);
+        setActiveUser({ ...data.user, isDemo: false });
+        setAuthModalOpen(false);
+        setAuthPassword('');
+        showBanner(`Signed in as ${data.user.name} (${data.user.role.toUpperCase()})`);
+        await fetchResumesAndJobs();
+      } else {
+        const res = await fetch(getApiUrl('/api/auth/register'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            name: authName,
+            email: authEmail,
+            password: authPassword,
+            role: authRole,
+          }),
+        });
+        const data = await safeParseResponse(res);
+        setAuthToken(data.token);
+        setActiveUser({ ...data.user, isDemo: false });
+        setAuthModalOpen(false);
+        setAuthPassword('');
+        showBanner(`Account created! Logged into private workspace as ${data.user.name}`);
+        await fetchResumesAndJobs();
+      }
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    clearAuthToken();
+    showBanner('Signed out of private workspace. Switched to public demo mode.');
+    await handlePersonaChange('recruiter');
   };
 
   const handleEvaluateMatch = async () => {
@@ -547,8 +622,12 @@ export default function App() {
   };
 
   const handleDeleteResume = async (id) => {
-    if (activeUser.role !== 'admin') {
-      showBanner('Candidate profile deletion requires Admin role. Switch to the Admin persona.');
+    if (activeUser?.isDemo) {
+      showBanner('Record deletion is disabled in the public demo. Sign in to your private workspace to manage records.');
+      return;
+    }
+    if (!['recruiter', 'admin'].includes(activeUser?.role)) {
+      showBanner('Candidate profile deletion requires Recruiter or Admin role.');
       return;
     }
     if (!window.confirm('Are you sure you want to delete this candidate profile?')) return;
@@ -563,8 +642,12 @@ export default function App() {
   };
 
   const handleDeleteJob = async (id) => {
-    if (activeUser.role !== 'admin') {
-      showBanner('Job posting deletion requires Admin role. Switch to the Admin persona.');
+    if (activeUser?.isDemo) {
+      showBanner('Job deletion is disabled in the public demo. Sign in to your private workspace to manage records.');
+      return;
+    }
+    if (!['recruiter', 'admin'].includes(activeUser?.role)) {
+      showBanner('Job posting deletion requires Recruiter or Admin role.');
       return;
     }
     if (!window.confirm('Are you sure you want to delete this job posting?')) return;
@@ -580,6 +663,25 @@ export default function App() {
 
   useEffect(() => {
     const initApp = async () => {
+      const token = getAuthToken();
+      if (token) {
+        try {
+          const res = await fetch(getApiUrl('/api/auth/me'), {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+          });
+          if (res.ok) {
+            const data = await safeParseResponse(res);
+            if (data?.user) {
+              setActiveUser({ ...data.user, isDemo: false });
+              checkHealth();
+              fetchResumesAndJobs();
+              return;
+            }
+          }
+        } catch {
+          clearAuthToken();
+        }
+      }
       await requestDemoSession('recruiter');
       checkHealth();
       fetchResumesAndJobs();
@@ -750,33 +852,66 @@ export default function App() {
           <div ref={utilityRef} className="hidden lg:flex items-center gap-2 xl:gap-2.5 shrink-0">
             <div className="h-5 w-px bg-[#DDE3E1] shrink-0" aria-hidden="true" />
 
-            {/* Recruiter Persona Switcher */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#F5F6F3] border border-[#DDE3E1] text-xs shrink-0">
-              <UserCheck className="w-3.5 h-3.5 text-[#187D70] shrink-0" />
-              <select
-                value={activeUser.role}
-                onChange={(e) => handlePersonaChange(e.target.value)}
-                aria-label="Select User Persona"
-                className="bg-transparent text-[#202B35] font-medium focus:outline-none cursor-pointer"
-              >
-                <option value="recruiter">Recruiter</option>
-                <option value="hiring_manager">Manager</option>
-                <option value="candidate">Candidate</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
+            {/* Demo Persona Switcher (when in demo mode) */}
+            {activeUser?.isDemo ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#F5F6F3] border border-[#DDE3E1] text-xs shrink-0">
+                <UserCheck className="w-3.5 h-3.5 text-[#187D70] shrink-0" />
+                <select
+                  value={activeUser.role}
+                  onChange={(e) => handlePersonaChange(e.target.value)}
+                  aria-label="Select Demo Persona"
+                  className="bg-transparent text-[#202B35] font-medium focus:outline-none cursor-pointer"
+                >
+                  <option value="recruiter">Demo: Recruiter</option>
+                  <option value="hiring_manager">Demo: Manager</option>
+                  <option value="candidate">Demo: Candidate</option>
+                </select>
+              </div>
+            ) : (
+              /* Authenticated User Badge */
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#E5F3EF] border border-[#187D70]/30 text-xs text-[#12685E] font-medium shrink-0">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#187D70] shrink-0" />
+                <span className="font-semibold">{activeUser.name}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#187D70] text-white font-mono uppercase tracking-wider">
+                  {activeUser.role}
+                </span>
+              </div>
+            )}
 
-            {/* Seed Data Action */}
-            <button
-              onClick={handleSeedData}
-              disabled={loadingData}
-              className="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] text-[#202B35] text-xs font-medium transition disabled:opacity-50 shadow-2xs cursor-pointer shrink-0"
-              title="Populate test candidates with technical synonyms and jobs"
-            >
-              <Zap className={`w-3.5 h-3.5 text-[#A96512] shrink-0 ${loadingData ? 'animate-pulse' : ''}`} />
-              <span className="hidden xl:inline">{loadingData ? 'Seeding...' : 'Seed Data'}</span>
-              <span className="xl:hidden inline">{loadingData ? '...' : 'Seed'}</span>
-            </button>
+            {/* Sign In / Sign Out Action */}
+            {activeUser?.isDemo ? (
+              <button
+                onClick={() => { setAuthMode('login'); setAuthModalOpen(true); }}
+                className="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg border border-[#187D70] bg-[#187D70] hover:bg-[#12685E] text-white text-xs font-semibold transition shadow-2xs cursor-pointer shrink-0"
+                title="Sign in to your private workspace or administrator account"
+              >
+                <LogIn className="w-3.5 h-3.5 shrink-0" />
+                <span>Sign In</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleSignOut}
+                className="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#FBEBEB] text-[#BC3838] text-xs font-medium transition shadow-2xs cursor-pointer shrink-0"
+                title="Sign out and return to public demo mode"
+              >
+                <LogOut className="w-3.5 h-3.5 shrink-0" />
+                <span>Sign Out</span>
+              </button>
+            )}
+
+            {/* Seed Data Action - Rendered ONLY for verified authenticated non-demo administrator */}
+            {activeUser?.role === 'admin' && !activeUser?.isDemo && (
+              <button
+                onClick={handleSeedData}
+                disabled={loadingData}
+                className="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-lg border border-[#A96512] bg-[#FDF8EE] hover:bg-[#F9EDD0] text-[#7A4506] text-xs font-semibold transition disabled:opacity-50 shadow-2xs cursor-pointer shrink-0"
+                title="Verified Admin: Populate clean dataset with technical synonyms and jobs"
+              >
+                <Zap className={`w-3.5 h-3.5 text-[#A96512] shrink-0 ${loadingData ? 'animate-pulse' : ''}`} />
+                <span className="hidden xl:inline">{loadingData ? 'Seeding...' : 'Seed Data'}</span>
+                <span className="xl:hidden inline">{loadingData ? '...' : 'Seed'}</span>
+              </button>
+            )}
 
             {/* Connection Status Indicator */}
             <div
@@ -937,10 +1072,9 @@ export default function App() {
                     aria-label="Change active user persona"
                     className="w-full min-h-[44px] h-11 px-3 bg-white border border-[#DDE3E1] rounded-lg text-xs font-medium text-[#202B35] focus:outline-none focus:border-[#187D70] cursor-pointer"
                   >
-                    <option value="recruiter">Sarah Connor (Recruiter)</option>
-                    <option value="hiring_manager">David Vance (Hiring Manager)</option>
-                    <option value="candidate">Alex Mercer (Candidate)</option>
-                    <option value="admin">Elena Rostova (Compliance & Security Admin)</option>
+                    <option value="recruiter">Sarah Connor (Demo: Recruiter)</option>
+                    <option value="hiring_manager">David Vance (Demo: Manager)</option>
+                    <option value="candidate">Alex Mercer (Demo: Candidate)</option>
                   </select>
                 </div>
 
@@ -990,16 +1124,45 @@ export default function App() {
                   <div className="px-1 text-[10px] font-semibold uppercase tracking-wider text-[#65717D] mb-1">
                     System Controls
                   </div>
-                  
-                  {/* Seed Data button (min-h-[44px]) */}
-                  <button
-                    onClick={() => { handleSeedData(); setMobileMenuOpen(false); }}
-                    disabled={loadingData}
-                    className="w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[#DDE3E1] bg-white hover:bg-[#EEF2F1] active:bg-[#E5F3EF] text-[#202B35] text-xs font-semibold transition disabled:opacity-50 shadow-2xs cursor-pointer"
-                  >
-                    <Zap className={`w-4 h-4 text-[#A96512] shrink-0 ${loadingData ? 'animate-pulse' : ''}`} />
-                    <span>{loadingData ? 'Seeding Demo Data...' : 'Seed Data'}</span>
-                  </button>
+
+                  {/* Auth button in Mobile Menu */}
+                  {activeUser?.isDemo ? (
+                    <button
+                      onClick={() => { setAuthMode('login'); setAuthModalOpen(true); setMobileMenuOpen(false); }}
+                      className="w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[#187D70] bg-[#187D70] hover:bg-[#12685E] text-white text-xs font-semibold transition shadow-2xs cursor-pointer"
+                    >
+                      <LogIn className="w-4 h-4 shrink-0" />
+                      <span>Sign In to Private Workspace</span>
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#E5F3EF] border border-[#187D70]/20 text-xs">
+                        <span className="font-semibold text-[#12685E] truncate">{activeUser.name}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-[#187D70] text-white font-mono uppercase">
+                          {activeUser.role}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => { handleSignOut(); setMobileMenuOpen(false); }}
+                        className="w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[#DDE3E1] bg-white hover:bg-[#FBEBEB] text-[#BC3838] text-xs font-semibold transition shadow-2xs cursor-pointer"
+                      >
+                        <LogOut className="w-4 h-4 shrink-0" />
+                        <span>Sign Out (Return to Demo)</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Seed Data button (min-h-[44px]) - Only for verified non-demo admin */}
+                  {activeUser?.role === 'admin' && !activeUser?.isDemo && (
+                    <button
+                      onClick={() => { handleSeedData(); setMobileMenuOpen(false); }}
+                      disabled={loadingData}
+                      className="w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[#A96512] bg-[#FDF8EE] hover:bg-[#F9EDD0] text-[#7A4506] text-xs font-semibold transition disabled:opacity-50 shadow-2xs cursor-pointer"
+                    >
+                      <Zap className={`w-4 h-4 text-[#A96512] shrink-0 ${loadingData ? 'animate-pulse' : ''}`} />
+                      <span>{loadingData ? 'Seeding Dataset...' : 'Seed Data (Admin)'}</span>
+                    </button>
+                  )}
 
                   {/* Refresh button (min-h-[44px]) */}
                   <button
@@ -1050,14 +1213,14 @@ export default function App() {
                 </p>
               </div>
 
-              {resumes.length === 0 && (
+              {resumes.length === 0 && activeUser?.role === 'admin' && !activeUser?.isDemo && (
                 <button
                   onClick={handleSeedData}
                   disabled={loadingData}
-                  className="px-4 py-2 rounded-lg bg-[#187D70] hover:bg-[#12685E] text-white text-xs font-semibold flex items-center gap-2 shadow-xs transition self-start disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg bg-[#A96512] hover:bg-[#8F520B] text-white text-xs font-semibold flex items-center gap-2 shadow-xs transition self-start disabled:opacity-50"
                 >
                   <Zap className={`w-3.5 h-3.5 ${loadingData ? 'animate-pulse' : ''}`} />
-                  <span>{loadingData ? 'Loading Data...' : 'Load Sample Data'}</span>
+                  <span>{loadingData ? 'Loading Data...' : 'Seed Sample Profiles (Admin)'}</span>
                 </button>
               )}
             </div>
@@ -1094,7 +1257,7 @@ export default function App() {
                   </select>
                 ) : (
                   <div className="p-5 rounded-lg bg-[#F5F6F3] border border-dashed border-[#DDE3E1] text-center text-xs text-[#65717D]">
-                    No candidate profiles found. Click "Seed Data" to load sample profiles.
+                    No candidate profiles found in your workspace. Click "+ Add Candidate" to create or upload candidate profiles.
                   </div>
                 )}
 
@@ -1156,7 +1319,7 @@ export default function App() {
                   </select>
                 ) : (
                   <div className="p-5 rounded-lg bg-[#F5F6F3] border border-dashed border-[#DDE3E1] text-center text-xs text-[#65717D]">
-                    No job postings found. Click "Seed Data" to load sample postings.
+                    No job postings found in your workspace. Click "+ Add Job" to create a new job opening.
                   </div>
                 )}
 
@@ -2157,7 +2320,7 @@ export default function App() {
               <h2 className="text-base font-semibold text-[#202B35]">Stored Candidates ({resumes.length})</h2>
               {resumes.length === 0 ? (
                 <div className="p-8 rounded-xl bg-white border border-dashed border-[#DDE3E1] text-center text-sm text-[#65717D]">
-                  No candidate resumes stored yet. Click "Seed Data" in the top bar to load sample profiles.
+                  No candidate resumes stored yet in this workspace. Use the form above to parse or create candidate profiles.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2297,7 +2460,7 @@ export default function App() {
               <h2 className="text-base font-semibold text-[#202B35]">Active Job Postings ({jobs.length})</h2>
               {jobs.length === 0 ? (
                 <div className="p-8 rounded-xl bg-white border border-dashed border-[#DDE3E1] text-center text-sm text-[#65717D]">
-                  No active job descriptions. Click "Seed Data" to load sample postings.
+                  No active job descriptions in this workspace. Use the form above to create job openings.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2611,6 +2774,160 @@ export default function App() {
         showBanner={showBanner}
         activeUser={activeUser}
       />
+
+      {/* ============================================================== */}
+      {/* MODAL 4: USER & ADMINISTRATOR AUTHENTICATION MODAL             */}
+      {/* ============================================================== */}
+      {authModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="auth-modal-title"
+        >
+          <div className="bg-white rounded-2xl border border-[#DDE3E1] shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-6 py-5 border-b border-[#DDE3E1] flex items-center justify-between bg-[#FBFBFA]">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-[#E5F3EF] text-[#187D70]">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 id="auth-modal-title" className="text-base font-bold text-[#202B35]">
+                    {authMode === 'login' ? 'Sign In to Drishti AI' : 'Create Private Workspace'}
+                  </h3>
+                  <p className="text-xs text-[#65717D]">
+                    {authMode === 'login'
+                      ? 'Access your private workspace or administrator console'
+                      : 'Register a separate, isolated workspace for your recruitment data'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAuthModalOpen(false)}
+                className="p-1.5 rounded-lg text-[#65717D] hover:text-[#202B35] hover:bg-[#F5F6F3] transition cursor-pointer"
+                aria-label="Close authentication modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Mode Switcher Tabs */}
+            <div className="grid grid-cols-2 p-1.5 bg-[#F5F6F3] border-b border-[#DDE3E1] text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => { setAuthMode('login'); setAuthError(null); }}
+                className={`py-2 rounded-lg transition cursor-pointer ${
+                  authMode === 'login'
+                    ? 'bg-white text-[#187D70] shadow-2xs'
+                    : 'text-[#65717D] hover:text-[#202B35]'
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAuthMode('register'); setAuthError(null); }}
+                className={`py-2 rounded-lg transition cursor-pointer ${
+                  authMode === 'register'
+                    ? 'bg-white text-[#187D70] shadow-2xs'
+                    : 'text-[#65717D] hover:text-[#202B35]'
+                }`}
+              >
+                Register
+              </button>
+            </div>
+
+            {/* Form Body */}
+            <form onSubmit={handleAuthSubmit} className="p-6 space-y-4 text-xs">
+              {authError && (
+                <div className="p-3 rounded-lg bg-[#FDF2F2] border border-[#F8B4B4] text-[#9B1C1C] flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-[#E02424]" />
+                  <span className="leading-relaxed">{authError}</span>
+                </div>
+              )}
+
+              {authMode === 'register' && (
+                <div>
+                  <label className="block font-semibold text-[#202B35] mb-1.5">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={authName}
+                    onChange={(e) => setAuthName(e.target.value)}
+                    placeholder="e.g. Shivam Gupta"
+                    className="w-full px-3 py-2.5 rounded-lg border border-[#DDE3E1] bg-[#FBFBFA] focus:bg-white focus:outline-none focus:border-[#187D70] text-[#202B35] font-medium"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block font-semibold text-[#202B35] mb-1.5">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  placeholder="name@company.com"
+                  className="w-full px-3 py-2.5 rounded-lg border border-[#DDE3E1] bg-[#FBFBFA] focus:bg-white focus:outline-none focus:border-[#187D70] text-[#202B35] font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#202B35] mb-1.5">Password</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full px-3 py-2.5 rounded-lg border border-[#DDE3E1] bg-[#FBFBFA] focus:bg-white focus:outline-none focus:border-[#187D70] text-[#202B35] font-medium"
+                />
+                <span className="text-[10px] text-[#65717D] mt-1 block">Minimum 6 characters</span>
+              </div>
+
+              {authMode === 'register' && (
+                <div>
+                  <label className="block font-semibold text-[#202B35] mb-1.5">Intended Workspace Role</label>
+                  <select
+                    value={authRole}
+                    onChange={(e) => setAuthRole(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-lg border border-[#DDE3E1] bg-[#FBFBFA] focus:bg-white focus:outline-none focus:border-[#187D70] text-[#202B35] font-medium cursor-pointer"
+                  >
+                    <option value="recruiter">Recruiter (Post jobs, parse resumes, run evaluations)</option>
+                    <option value="candidate">Candidate (Explore profiles &amp; job-fit explanations)</option>
+                  </select>
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAuthModalOpen(false)}
+                  className="px-4 py-2.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#F5F6F3] text-[#202B35] font-semibold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={authSubmitting}
+                  className="px-5 py-2.5 rounded-lg bg-[#187D70] hover:bg-[#12685E] text-white font-semibold flex items-center gap-2 transition disabled:opacity-50 shadow-xs cursor-pointer"
+                >
+                  {authSubmitting ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : authMode === 'login' ? (
+                    <LogIn className="w-4 h-4" />
+                  ) : (
+                    <UserCheck className="w-4 h-4" />
+                  )}
+                  <span>{authSubmitting ? 'Verifying...' : authMode === 'login' ? 'Sign In' : 'Create Account'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Application Footer */}
       <footer className="border-t border-[#DDE3E1] mt-20 py-8 bg-[#FBFBFA]/60 text-xs text-[#65717D]">

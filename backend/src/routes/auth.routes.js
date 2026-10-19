@@ -6,6 +6,7 @@ import {
   verifyPassword,
   generateToken,
   authenticate,
+  requireAdmin,
 } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
@@ -202,6 +203,65 @@ router.get('/me', authenticate, async (req, res, next) => {
     res.status(200).json({
       success: true,
       user: user.toSafeObject(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/auth/users
+ * Administrator-only endpoint to inspect registered user accounts safely.
+ * Returns safe objects without password hashes or salts.
+ */
+router.get('/users', authenticate, requireAdmin, async (req, res, next) => {
+  try {
+    const users = await User.find({}).sort({ createdAt: -1 });
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      users: users.map((u) => u.toSafeObject()),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PATCH /api/auth/users/:id/role
+ * Administrator-only endpoint to update user roles.
+ * Strictly prevents promoting unauthorized users to admin when ADMIN_EMAIL is configured.
+ */
+router.patch('/users/:id/role', authenticate, requireAdmin, async (req, res, next) => {
+  try {
+    const { role } = req.body;
+    if (!role || !['recruiter', 'hiring_manager', 'candidate', 'admin'].includes(role)) {
+      return res.status(400).json({
+        error: "Invalid role. Allowed roles: 'recruiter', 'hiring_manager', 'candidate', 'admin'.",
+      });
+    }
+
+    const targetUser = await User.findById(req.params.id);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Target user not found.' });
+    }
+
+    if (role === 'admin' && process.env.ADMIN_EMAIL) {
+      const designatedAdmin = process.env.ADMIN_EMAIL.toLowerCase().trim();
+      if (targetUser.email.toLowerCase().trim() !== designatedAdmin) {
+        return res.status(403).json({
+          error: `Cannot grant administrator role. Only the designated ADMIN_EMAIL (${designatedAdmin}) may hold the administrator role.`,
+        });
+      }
+    }
+
+    targetUser.role = role;
+    await targetUser.save();
+
+    res.status(200).json({
+      success: true,
+      message: `User role updated to ${role}.`,
+      user: targetUser.toSafeObject(),
     });
   } catch (error) {
     next(error);

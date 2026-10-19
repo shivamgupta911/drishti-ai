@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import User from '../models/User.js';
 
 /**
  * Retrieves the cryptographic secret key for signing and verifying tokens.
@@ -232,13 +233,38 @@ export function requireRole(...allowedRoles) {
 
 /**
  * Express middleware restricting access strictly to verified administrator accounts.
- * Prevents demo sessions from gaining or utilizing admin privileges.
+ * Enforces real-time database verification to block stale JWTs from demoted or revoked users.
+ * Prevents demo sessions and unauthorized users from gaining or utilizing admin privileges.
  */
-export function requireAdmin(req, res, next) {
+export async function requireAdmin(req, res, next) {
   if (!req.user || req.user.role !== 'admin' || req.tenant?.isDemo) {
     return res.status(403).json({
       error: 'Access denied. Administrative operations are restricted to verified administrator accounts and are strictly prohibited in demo sessions.',
     });
   }
-  next();
+
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user || user.role !== 'admin' || user.isActive === false) {
+      return res.status(403).json({
+        error: 'Access denied. Administrative privileges are invalid, revoked, or account is inactive.',
+      });
+    }
+
+    if (process.env.ADMIN_EMAIL) {
+      const designatedAdmin = process.env.ADMIN_EMAIL.toLowerCase().trim();
+      if (user.email.toLowerCase().trim() !== designatedAdmin) {
+        return res.status(403).json({
+          error: 'Access denied. Account is not designated as the verified administrator.',
+        });
+      }
+    }
+
+    req.adminUser = user;
+    next();
+  } catch (err) {
+    return res.status(500).json({
+      error: `Administrator verification failed: ${err.message}`,
+    });
+  }
 }

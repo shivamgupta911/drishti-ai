@@ -49,12 +49,14 @@ export async function seedInitialData() {
   });
 
   const adminSalt = generateSalt();
+  const designatedAdmin = process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.toLowerCase().trim() : null;
+  const adminRole = (!designatedAdmin || designatedAdmin === 'admin@drishti.ai') ? 'admin' : 'recruiter';
   const adminUser = await User.create({
     name: 'Elena Rostova (Compliance & Security Admin)',
     email: 'admin@drishti.ai',
     salt: adminSalt,
     passwordHash: hashPassword('Admin@123', adminSalt),
-    role: 'admin',
+    role: adminRole,
     organization: 'Drishti AI Ecosystem',
   });
 

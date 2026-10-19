@@ -3,6 +3,7 @@ import Job from '../models/Job.js';
 import MatchResult from '../models/MatchResult.js';
 import EvaluationAudit from '../models/EvaluationAudit.js';
 import RecruitmentOutcome from '../models/RecruitmentOutcome.js';
+import User from '../models/User.js';
 
 /**
  * Drishti AI - Safe Data Migration & Tenancy Isolation Engine
@@ -114,6 +115,8 @@ export async function migrateExistingData() {
       await o.save();
     }
 
+    const soleAdminResult = await provisionSoleAdministrator();
+
     return {
       success: true,
       migratedResumes: unownedResumes.length,
@@ -121,9 +124,149 @@ export async function migrateExistingData() {
       migratedMatches: unownedMatches.length,
       migratedAudits: unownedAudits.length,
       migratedOutcomes: unownedOutcomes.length,
+      soleAdmin: soleAdminResult,
     };
   } catch (err) {
     console.error('[Migration Error]', err.message);
     return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Safe, Idempotent Administrator Status & Controlled Provisioning Hook
+ *
+ * Rules:
+ * 1. Audits and logs current administrator accounts and the designated target account.
+ * 2. ADMIN_EMAIL alone does NOT silently promote an unverified or unintended account on startup.
+ *    Promotion requires explicit confirmation via ADMIN_PROVISION_CONFIRMED=true and verification
+ *    against ADMIN_VERIFIED_USER_ID if configured.
+ * 3. Never auto-creates accounts, hardcodes passwords, or exposes bootstrap endpoints.
+ * 4. Fails safely if the account is missing, inactive, unverified, or unapproved.
+ * 5. Does NOT automatically demote existing administrator accounts without explicit approval
+ *    (ADMIN_DEMOTE_APPROVED=true).
+ */
+export async function provisionSoleAdministrator() {
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.toLowerCase().trim() : null;
+    if (!adminEmail) {
+      console.log('[Sole Admin Audit] No ADMIN_EMAIL configured in environment. Skipping administrator role audit.');
+      return { status: 'skipped', reason: 'ADMIN_EMAIL not configured' };
+    }
+
+    // 1. Audit existing administrator accounts in the database
+    const existingAdmins = await User.find({ role: 'admin' });
+    if (existingAdmins.length > 0) {
+      console.log(`[Sole Admin Audit] Current accounts with 'admin' role (${existingAdmins.length}):`);
+      for (const a of existingAdmins) {
+        console.log(` - Email: ${a.email}, ID: ${a._id}, Active: ${a.isActive}, CreatedAt: ${a.createdAt}`);
+      }
+    } else {
+      console.log("[Sole Admin Audit] Zero accounts currently hold the 'admin' role.");
+    }
+
+    // 2. Locate the designated target account in the database
+    const targetUser = await User.findOne({ email: adminEmail });
+    if (!targetUser) {
+      console.warn(
+        `[Sole Admin Audit] Intended administrator account '${adminEmail}' does not exist in the database yet. ` +
+        `Waiting for user registration. No accounts were promoted.`
+      );
+      return { status: 'account_not_found', email: adminEmail };
+    }
+
+    console.log(
+      `[Sole Admin Audit] Intended administrator account located: ${targetUser.email} ` +
+      `(ID: ${targetUser._id}, Current Role: '${targetUser.role}', Active: ${targetUser.isActive}, Verified: ${targetUser.isVerified})`
+    );
+
+    // 3. Validate account status and credentials
+    if (targetUser.isActive === false) {
+      console.warn(
+        `[Sole Admin Provisioning] Target account '${adminEmail}' (ID: ${targetUser._id}) is deactivated. ` +
+        `Promotion aborted.`
+      );
+      return { status: 'account_inactive', email: adminEmail };
+    }
+
+    if (!targetUser.passwordHash || !targetUser.salt) {
+      console.warn(
+        `[Sole Admin Provisioning] Target account '${adminEmail}' lacks valid credentials. ` +
+        `Promotion aborted.`
+      );
+      return { status: 'account_unverified', email: adminEmail };
+    }
+
+    // 4. Require explicit confirmation before promotion: ADMIN_EMAIL alone must not silently promote
+    const isProvisionConfirmed = process.env.ADMIN_PROVISION_CONFIRMED === 'true';
+    if (!isProvisionConfirmed && targetUser.role !== 'admin') {
+      console.log(
+        `[Sole Admin Audit] Administrator promotion for ${targetUser.email} (ID: ${targetUser._id}) ` +
+        `is awaiting explicit approval (set ADMIN_PROVISION_CONFIRMED=true to execute). No roles modified.`
+      );
+      return {
+        status: 'pending_approval',
+        targetUser: targetUser.toSafeObject(),
+        existingAdmins: existingAdmins.map((a) => a.toSafeObject()),
+      };
+    }
+
+    // 5. Verify database ID match if ADMIN_VERIFIED_USER_ID is provided
+    if (process.env.ADMIN_VERIFIED_USER_ID) {
+      const verifiedId = process.env.ADMIN_VERIFIED_USER_ID.trim();
+      if (targetUser._id.toString() !== verifiedId) {
+        console.warn(
+          `[Sole Admin Provisioning] Security ID mismatch: configured ADMIN_VERIFIED_USER_ID (${verifiedId}) ` +
+          `does not match database account ID (${targetUser._id}). Promotion aborted for safety.`
+        );
+        return { status: 'id_mismatch', expectedId: verifiedId, actualId: targetUser._id.toString() };
+      }
+    }
+
+    // 6. Handle other administrator accounts: require explicit approval before demoting
+    const otherAdmins = existingAdmins.filter((a) => a._id.toString() !== targetUser._id.toString());
+    const demotedList = [];
+
+    if (otherAdmins.length > 0) {
+      const isDemoteApproved = process.env.ADMIN_DEMOTE_APPROVED === 'true';
+      if (isDemoteApproved) {
+        console.log(`[Sole Admin Provisioning] Executing approved demotion for ${otherAdmins.length} unauthorized admin account(s):`);
+        for (const admin of otherAdmins) {
+          console.log(` - Demoting ${admin.email} (ID: ${admin._id}) to recruiter`);
+          admin.role = 'recruiter';
+          await admin.save();
+          demotedList.push({ id: admin._id.toString(), email: admin.email });
+        }
+      } else {
+        console.warn(
+          `[Sole Admin Warning] ${otherAdmins.length} other account(s) hold the 'admin' role. ` +
+          `Automatic demotion was not executed (requires explicit ADMIN_DEMOTE_APPROVED=true).`
+        );
+      }
+    }
+
+    // 7. Promote target user to sole administrator
+    const wasAlreadyAdmin = targetUser.role === 'admin';
+    if (!wasAlreadyAdmin) {
+      targetUser.role = 'admin';
+    }
+    targetUser.isVerified = true;
+    await targetUser.save();
+
+    console.log(
+      `[Sole Admin Provisioning] Confirmed ${targetUser.email} (ID: ${targetUser._id}) as verified administrator. ` +
+      `(demoted other admins: ${demotedList.length})`
+    );
+
+    return {
+      status: 'success',
+      adminId: targetUser._id.toString(),
+      adminEmail: targetUser.email,
+      wasAlreadyAdmin,
+      demotedAdmins: demotedList,
+      pendingOtherAdmins: otherAdmins.length - demotedList.length,
+    };
+  } catch (err) {
+    console.error('[Sole Admin Provisioning Error]', err.message);
+    return { status: 'error', error: err.message };
   }
 }

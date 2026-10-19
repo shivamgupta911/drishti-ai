@@ -126,24 +126,11 @@ export function clearAuthToken() {
 }
 
 /**
- * Requests an authorized session token for the active demo persona from the backend
+ * Requests an authorized session token for the active demo persona from the backend.
+ * Only supports legitimate read-only public demo personas ('recruiter', 'hiring_manager', 'candidate').
  */
 export async function requestDemoSession(persona = 'recruiter') {
   try {
-    if (persona === 'admin') {
-      const url = getApiUrl('/api/auth/login');
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ email: 'admin@drishti.ai', password: 'Admin@123' }),
-      });
-      const data = await safeParseResponse(res);
-      if (data.token) {
-        setAuthToken(data.token);
-      }
-      return data;
-    }
-
     const url = getApiUrl('/api/auth/demo-session');
     const res = await fetch(url, {
       method: 'POST',
