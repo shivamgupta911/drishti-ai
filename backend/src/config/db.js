@@ -28,8 +28,8 @@ export function getDbStatus() {
     type: isConnected ? dbType : 'none',
     isInMemory: isConnected && dbType.startsWith('in-memory'),
     isProduction,
-    host: isConnected ? mongoose.connection.host : null,
-    name: isConnected ? mongoose.connection.name : null,
+    host: !isProduction && isConnected ? mongoose.connection.host : null,
+    name: !isProduction && isConnected ? mongoose.connection.name : null,
   };
 }
 

@@ -117,12 +117,31 @@ const evaluationAuditSchema = new mongoose.Schema(
       default: Date.now,
       immutable: true,
     },
+    ownerId: {
+      type: String,
+      required: true,
+      default: 'demo',
+      index: true,
+    },
+    isDemo: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    quarantined: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   {
     timestamps: true,
   }
 );
 
+evaluationAuditSchema.index({ ownerId: 1, createdAt: -1 });
+evaluationAuditSchema.index({ ownerId: 1, jobId: 1, overallScore: -1 });
+evaluationAuditSchema.index({ isDemo: 1, quarantined: 1 });
 evaluationAuditSchema.index({ jobId: 1, overallScore: -1 });
 evaluationAuditSchema.index({ resumeId: 1, createdAt: -1 });
 

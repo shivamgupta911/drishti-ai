@@ -75,10 +75,30 @@ const matchResultSchema = new mongoose.Schema(
         },
       },
     },
+    ownerId: {
+      type: String,
+      required: true,
+      default: 'demo',
+      index: true,
+    },
+    isDemo: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    quarantined: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   {
     timestamps: true,
   }
 );
+
+matchResultSchema.index({ ownerId: 1, createdAt: -1 });
+matchResultSchema.index({ ownerId: 1, jobId: 1 });
+matchResultSchema.index({ isDemo: 1, quarantined: 1 });
 
 export default mongoose.model('MatchResult', matchResultSchema);

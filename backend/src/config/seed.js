@@ -48,6 +48,16 @@ export async function seedInitialData() {
     organization: 'Open Talent Community',
   });
 
+  const adminSalt = generateSalt();
+  const adminUser = await User.create({
+    name: 'Elena Rostova (Compliance & Security Admin)',
+    email: 'admin@drishti.ai',
+    salt: adminSalt,
+    passwordHash: hashPassword('Admin@123', adminSalt),
+    role: 'admin',
+    organization: 'Drishti AI Ecosystem',
+  });
+
   // Sample Resume 1: Full-Stack Engineer (Alpha)
   const candidate1 = await Resume.create({
     candidateName: 'Candidate Alpha (Anonymized)',
@@ -90,6 +100,9 @@ export async function seedInitialData() {
       },
     ],
     anonymized: true,
+    ownerId: 'demo',
+    isDemo: true,
+    quarantined: false,
   });
 
   // Sample Resume 2: Junior Frontend Developer (Beta)
@@ -124,6 +137,9 @@ export async function seedInitialData() {
       },
     ],
     anonymized: true,
+    ownerId: 'demo',
+    isDemo: true,
+    quarantined: false,
   });
 
   // Sample Resume 3: Cloud & Platform DevOps Engineer (Gamma)
@@ -162,6 +178,9 @@ export async function seedInitialData() {
       },
     ],
     anonymized: true,
+    ownerId: 'demo',
+    isDemo: true,
+    quarantined: false,
   });
 
   // Sample Job 1: Full-Stack Software Engineer
@@ -190,6 +209,9 @@ export async function seedInitialData() {
       'Build resilient RESTful APIs in Node.js and Express.',
       'Develop modern, responsive client components in React.',
     ],
+    ownerId: 'demo',
+    isDemo: true,
+    quarantined: false,
   });
 
   // Sample Job 2: Senior Cloud & DevOps Specialist
@@ -215,6 +237,9 @@ export async function seedInitialData() {
       'Manage multi-region cloud clusters and automated zero-downtime deployments.',
       'Ensure high security, infrastructure-as-code consistency, and strict compliance.',
     ],
+    ownerId: 'demo',
+    isDemo: true,
+    quarantined: false,
   });
 
   // Pre-calculate evaluation records, evidence traces, and recruitment outcomes
@@ -235,6 +260,9 @@ export async function seedInitialData() {
     const matchRecord = await MatchResult.create({
       resumeId: pair.resume._id,
       jobId: pair.job._id,
+      ownerId: 'demo',
+      isDemo: true,
+      quarantined: false,
       ...evalData,
     });
     seededMatches.push(matchRecord);
@@ -252,6 +280,9 @@ export async function seedInitialData() {
       affinityMatches: evalData.affinityMatches,
       missingRequiredSkills: evalData.missingRequiredSkills,
       evidenceTraces,
+      ownerId: 'demo',
+      isDemo: true,
+      quarantined: false,
     });
 
     await RecruitmentOutcome.create({
@@ -272,6 +303,9 @@ export async function seedInitialData() {
         userName: recruiter.name,
         userRole: recruiter.role,
       },
+      ownerId: 'demo',
+      isDemo: true,
+      quarantined: false,
     });
   }
 
@@ -279,7 +313,7 @@ export async function seedInitialData() {
     message: 'Sample candidates, job postings, RBAC users, and evaluation audits seeded successfully.',
     resumes: [candidate1._id, candidate2._id, candidate3._id],
     jobs: [job1._id, job2._id],
-    users: [recruiter._id, manager._id, candidateUser._id],
+    users: [recruiter._id, manager._id, candidateUser._id, adminUser._id],
     matchesCount: seededMatches.length,
   };
 }

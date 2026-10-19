@@ -1,14 +1,13 @@
-import dotenv from 'dotenv';
+import 'dotenv/config';
 import app from './app.js';
 import { connectDB, disconnectDB } from './config/db.js';
-
-// Load environment variables from .env
-dotenv.config();
+import { migrateExistingData } from './config/migration.js';
 
 const PORT = process.env.PORT || 5000;
 
-// Initialize database connection
+// Initialize database connection and run safe tenancy migration
 await connectDB();
+await migrateExistingData();
 
 // Start Express server
 const server = app.listen(PORT, () => {

@@ -7,7 +7,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node test-suite.mjs"
+    "test": "node test-suite.mjs && node security-test-suite.mjs && node tenant-isolation-test-suite.mjs",
+    "test:unit": "node test-suite.mjs",
+    "test:security": "node security-test-suite.mjs",
+    "test:tenant": "node tenant-isolation-test-suite.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",

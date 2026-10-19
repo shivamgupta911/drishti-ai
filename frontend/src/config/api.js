@@ -87,3 +87,118 @@ export async function safeParseResponse(response) {
 
   return { data: trimmed };
 }
+
+// -------------------------------------------------------------
+// Authentication & Session Token Management
+// -------------------------------------------------------------
+let cachedToken = '';
+
+/**
+ * Returns active Bearer token, loading from sessionStorage if present
+ */
+export function getAuthToken() {
+  if (cachedToken) return cachedToken;
+  if (typeof window !== 'undefined' && window.sessionStorage) {
+    cachedToken = window.sessionStorage.getItem('drishti_auth_token') || '';
+  }
+  return cachedToken;
+}
+
+/**
+ * Stores active Bearer token in memory and sessionStorage
+ */
+export function setAuthToken(token) {
+  cachedToken = token || '';
+  if (typeof window !== 'undefined' && window.sessionStorage) {
+    if (token) {
+      window.sessionStorage.setItem('drishti_auth_token', token);
+    } else {
+      window.sessionStorage.removeItem('drishti_auth_token');
+    }
+  }
+}
+
+/**
+ * Clears active Bearer token
+ */
+export function clearAuthToken() {
+  setAuthToken('');
+}
+
+/**
+ * Requests an authorized session token for the active demo persona from the backend
+ */
+export async function requestDemoSession(persona = 'recruiter') {
+  try {
+    if (persona === 'admin') {
+      const url = getApiUrl('/api/auth/login');
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ email: 'admin@drishti.ai', password: 'Admin@123' }),
+      });
+      const data = await safeParseResponse(res);
+      if (data.token) {
+        setAuthToken(data.token);
+      }
+      return data;
+    }
+
+    const url = getApiUrl('/api/auth/demo-session');
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ persona }),
+    });
+    const data = await safeParseResponse(res);
+    if (data.token) {
+      setAuthToken(data.token);
+    }
+    return data;
+  } catch (err) {
+    console.warn('Demo session acquisition failed:', err.message);
+    return null;
+  }
+}
+
+// -------------------------------------------------------------
+// Transparent Fetch Interceptor for Authenticated API Requests
+// Automatically injects Authorization header into all private API calls
+// -------------------------------------------------------------
+if (typeof window !== 'undefined' && window.fetch && !window.__drishti_fetch_intercepted__) {
+  const originalFetch = window.fetch;
+  window.fetch = function (input, init = {}) {
+    const urlStr = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+    const isPublic =
+      urlStr.includes('/api/health') ||
+      urlStr.includes('/api/auth/login') ||
+      urlStr.includes('/api/auth/demo-session') ||
+      urlStr.includes('/api/auth/register');
+
+    if (urlStr.includes('/api/') && !isPublic) {
+      const token = getAuthToken();
+      if (token) {
+        let headers;
+        if (init.headers instanceof Headers) {
+          headers = new Headers(init.headers);
+        } else if (Array.isArray(init.headers)) {
+          headers = new Headers(init.headers);
+        } else if (typeof init.headers === 'object' && init.headers !== null) {
+          headers = new Headers(init.headers);
+        } else {
+          headers = new Headers();
+        }
+
+        if (!headers.has('Authorization')) {
+          headers.set('Authorization', `Bearer ${token}`);
+        }
+        if (!headers.has('Accept')) {
+          headers.set('Accept', 'application/json');
+        }
+        init = { ...init, headers };
+      }
+    }
+    return originalFetch.call(this, input, init);
+  };
+  window.__drishti_fetch_intercepted__ = true;
+}

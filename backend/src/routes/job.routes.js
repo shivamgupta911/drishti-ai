@@ -1,14 +1,21 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import Job from '../models/Job.js';
 import { extractSkills, extractExperienceYears } from '../services/parser.service.js';
+import {
+  authenticate,
+  requireRole,
+  requirePrivateWorkspace,
+  getTenantFilter,
+} from '../middleware/auth.middleware.js';
 
 const router = Router();
 
 /**
  * POST /api/jobs
- * Create job description, auto-populating skills if not explicitly provided
+ * Create job description in private workspace (Recruiter / Admin only)
  */
-router.post('/', async (req, res, next) => {
+router.post('/', authenticate, requirePrivateWorkspace, requireRole('recruiter', 'admin'), async (req, res, next) => {
   try {
     const {
       title,
@@ -57,11 +64,14 @@ router.post('/', async (req, res, next) => {
       preferredSkills: finalPreferredSkills,
       educationRequirement: educationRequirement || 'Bachelor degree in relevant domain',
       responsibilities: Array.isArray(responsibilities) ? responsibilities : [],
+      ownerId: req.tenant.id,
+      isDemo: false,
+      quarantined: false,
     });
 
     res.status(201).json({
       success: true,
-      message: 'Job posting created successfully.',
+      message: 'Job posting created in your private workspace successfully.',
       data: job,
     });
   } catch (error) {
@@ -71,11 +81,12 @@ router.post('/', async (req, res, next) => {
 
 /**
  * GET /api/jobs
- * List all job postings
+ * List all job postings scoped to active tenant (Demo visitors see demo jobs; users see their own)
  */
 router.get('/', async (req, res, next) => {
   try {
-    const jobs = await Job.find().sort({ createdAt: -1 });
+    const filter = getTenantFilter(req);
+    const jobs = await Job.find(filter).sort({ createdAt: -1 });
     res.status(200).json({
       success: true,
       count: jobs.length,
@@ -88,11 +99,16 @@ router.get('/', async (req, res, next) => {
 
 /**
  * GET /api/jobs/:id
- * Fetch single job by ID
+ * Fetch single job by ID scoped strictly to active tenant (IDOR protected)
  */
 router.get('/:id', async (req, res, next) => {
   try {
-    const job = await Job.findById(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: `Invalid job identifier: '${req.params.id}'` });
+    }
+
+    const filter = { _id: req.params.id, ...getTenantFilter(req) };
+    const job = await Job.findOne(filter);
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
@@ -104,11 +120,16 @@ router.get('/:id', async (req, res, next) => {
 
 /**
  * DELETE /api/jobs/:id
- * Delete job posting
+ * Delete job posting from private workspace (Workspace owner only)
  */
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', authenticate, requirePrivateWorkspace, requireRole('recruiter', 'admin'), async (req, res, next) => {
   try {
-    const job = await Job.findByIdAndDelete(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: `Invalid job identifier: '${req.params.id}'` });
+    }
+
+    const filter = { _id: req.params.id, ownerId: req.tenant.id };
+    const job = await Job.findOneAndDelete(filter);
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }

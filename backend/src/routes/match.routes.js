@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import Resume from '../models/Resume.js';
 import Job from '../models/Job.js';
 import MatchResult from '../models/MatchResult.js';
@@ -7,12 +8,14 @@ import { evaluateMatch, rankCandidatesForJob, compareTwoCandidates } from '../se
 import { parseResumeText, extractSkills, extractExperienceYears } from '../services/parser.service.js';
 import { auditDisparateImpact } from '../services/fairness.service.js';
 import { buildEvidenceDossier } from '../services/evidence.service.js';
+import { getTenantFilter } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
 /**
  * POST /api/matches/evaluate
- * Compare candidate resume against job description and produce explainable audit with evidence traces
+ * Compare candidate resume against job description and produce explainable audit with evidence traces.
+ * Enforces strict tenant scoping: candidates and jobs must belong to the active workspace.
  */
 router.post('/evaluate', async (req, res, next) => {
   try {
@@ -22,18 +25,24 @@ router.post('/evaluate', async (req, res, next) => {
     let jobObj = null;
 
     if (resumeId) {
-      resumeObj = await Resume.findById(resumeId);
+      if (!mongoose.Types.ObjectId.isValid(resumeId)) {
+        return res.status(400).json({ error: `Invalid resume identifier: '${resumeId}'` });
+      }
+      resumeObj = await Resume.findOne({ _id: resumeId, ...getTenantFilter(req) });
       if (!resumeObj) {
-        return res.status(404).json({ error: `Resume with ID ${resumeId} not found.` });
+        return res.status(404).json({ error: `Resume with ID ${resumeId} not found in your workspace.` });
       }
     } else if (rawResumeText) {
       resumeObj = parseResumeText(rawResumeText, { anonymize: true });
     }
 
     if (jobId) {
-      jobObj = await Job.findById(jobId);
+      if (!mongoose.Types.ObjectId.isValid(jobId)) {
+        return res.status(400).json({ error: `Invalid job identifier: '${jobId}'` });
+      }
+      jobObj = await Job.findOne({ _id: jobId, ...getTenantFilter(req) });
       if (!jobObj) {
-        return res.status(404).json({ error: `Job with ID ${jobId} not found.` });
+        return res.status(404).json({ error: `Job with ID ${jobId} not found in your workspace.` });
       }
     } else if (rawJobText) {
       jobObj = {
@@ -57,10 +66,16 @@ router.post('/evaluate', async (req, res, next) => {
     let savedRecord = null;
     let auditRecord = null;
     if (resumeObj._id && jobObj._id) {
+      const ownerId = req.tenant.isDemo ? 'demo' : req.tenant.id;
+      const isDemo = req.tenant.isDemo;
+
       savedRecord = await MatchResult.create({
         resumeId: resumeObj._id,
         jobId: jobObj._id,
         ...evaluation,
+        ownerId,
+        isDemo,
+        quarantined: false,
       });
 
       // Persist immutable EvaluationAudit record
@@ -77,6 +92,9 @@ router.post('/evaluate', async (req, res, next) => {
         affinityMatches: evaluation.affinityMatches,
         missingRequiredSkills: evaluation.missingRequiredSkills,
         evidenceTraces,
+        ownerId,
+        isDemo,
+        quarantined: false,
       });
     }
 
@@ -97,16 +115,20 @@ router.post('/evaluate', async (req, res, next) => {
 
 /**
  * GET /api/matches/rank/:jobId
- * Batch evaluates all candidate profiles against a specific job posting
+ * Batch evaluates candidate profiles against a specific job posting within the active tenant pool
  */
 router.get('/rank/:jobId', async (req, res, next) => {
   try {
-    const job = await Job.findById(req.params.jobId);
-    if (!job) {
-      return res.status(404).json({ error: 'Job posting not found.' });
+    if (!mongoose.Types.ObjectId.isValid(req.params.jobId)) {
+      return res.status(400).json({ error: `Invalid job identifier: '${req.params.jobId}'` });
     }
 
-    const resumes = await Resume.find();
+    const job = await Job.findOne({ _id: req.params.jobId, ...getTenantFilter(req) });
+    if (!job) {
+      return res.status(404).json({ error: 'Job posting not found in your workspace.' });
+    }
+
+    const resumes = await Resume.find(getTenantFilter(req));
     if (resumes.length === 0) {
       return res.status(200).json({
         success: true,
@@ -133,7 +155,8 @@ router.get('/rank/:jobId', async (req, res, next) => {
 
 /**
  * POST /api/matches/compare
- * Generates an explainable side-by-side comparison between two candidates for a role
+ * Generates an explainable side-by-side comparison between two candidates for a role.
+ * Cross-tenant comparisons are strictly blocked: all entities must belong to active tenant.
  */
 router.post('/compare', async (req, res, next) => {
   try {
@@ -145,15 +168,24 @@ router.post('/compare', async (req, res, next) => {
       });
     }
 
+    if (
+      !mongoose.Types.ObjectId.isValid(candidateAId) ||
+      !mongoose.Types.ObjectId.isValid(candidateBId) ||
+      !mongoose.Types.ObjectId.isValid(jobId)
+    ) {
+      return res.status(400).json({ error: 'Invalid candidate or job identifier format.' });
+    }
+
+    const filter = getTenantFilter(req);
     const [candidateA, candidateB, job] = await Promise.all([
-      Resume.findById(candidateAId),
-      Resume.findById(candidateBId),
-      Job.findById(jobId),
+      Resume.findOne({ _id: candidateAId, ...filter }),
+      Resume.findOne({ _id: candidateBId, ...filter }),
+      Job.findOne({ _id: jobId, ...filter }),
     ]);
 
     if (!candidateA || !candidateB || !job) {
       return res.status(404).json({
-        error: 'One or more of the specified candidates or job posting could not be found.',
+        error: 'One or more of the specified candidates or job posting could not be found in your workspace.',
       });
     }
 
@@ -170,16 +202,20 @@ router.post('/compare', async (req, res, next) => {
 
 /**
  * GET /api/matches/:id/report
- * Returns a structured, printable compliance & algorithmic fairness audit dossier
+ * Structured compliance & algorithmic fairness audit dossier scoped to tenant
  */
 router.get('/:id/report', async (req, res, next) => {
   try {
-    const match = await MatchResult.findById(req.params.id)
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: `Invalid match identifier: '${req.params.id}'` });
+    }
+
+    const match = await MatchResult.findOne({ _id: req.params.id, ...getTenantFilter(req) })
       .populate('resumeId')
       .populate('jobId');
 
     if (!match) {
-      return res.status(404).json({ error: 'Match evaluation not found.' });
+      return res.status(404).json({ error: 'Match evaluation not found in your workspace.' });
     }
 
     const auditDossier = {
@@ -224,11 +260,11 @@ router.get('/:id/report', async (req, res, next) => {
 
 /**
  * GET /api/matches
- * List all saved match evaluations
+ * List saved match evaluations scoped to active tenant
  */
 router.get('/', async (req, res, next) => {
   try {
-    const matches = await MatchResult.find()
+    const matches = await MatchResult.find(getTenantFilter(req))
       .populate('resumeId', 'candidateName totalExperienceYears skills')
       .populate('jobId', 'title company minExperienceYears')
       .sort({ createdAt: -1 });
@@ -245,16 +281,20 @@ router.get('/', async (req, res, next) => {
 
 /**
  * GET /api/matches/:id
- * Get single match audit
+ * Get single match audit scoped to active tenant
  */
 router.get('/:id', async (req, res, next) => {
   try {
-    const match = await MatchResult.findById(req.params.id)
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: `Invalid match identifier: '${req.params.id}'` });
+    }
+
+    const match = await MatchResult.findOne({ _id: req.params.id, ...getTenantFilter(req) })
       .populate('resumeId')
       .populate('jobId');
 
     if (!match) {
-      return res.status(404).json({ error: 'Match evaluation not found' });
+      return res.status(404).json({ error: 'Match evaluation not found in your workspace.' });
     }
 
     res.status(200).json({ success: true, data: match });
@@ -265,16 +305,20 @@ router.get('/:id', async (req, res, next) => {
 
 /**
  * GET /api/matches/fairness-audit/:jobId
- * Calculate EEOC 4/5ths disparate impact and fairness audit across candidate pool for a role
+ * Calculate EEOC 4/5ths disparate impact and fairness audit scoped to active tenant cohort
  */
 router.get('/fairness-audit/:jobId', async (req, res, next) => {
   try {
-    const job = await Job.findById(req.params.jobId);
-    if (!job) {
-      return res.status(404).json({ error: 'Job posting not found.' });
+    if (!mongoose.Types.ObjectId.isValid(req.params.jobId)) {
+      return res.status(400).json({ error: `Invalid job identifier: '${req.params.jobId}'` });
     }
 
-    const resumes = await Resume.find();
+    const job = await Job.findOne({ _id: req.params.jobId, ...getTenantFilter(req) });
+    if (!job) {
+      return res.status(404).json({ error: 'Job posting not found in your workspace.' });
+    }
+
+    const resumes = await Resume.find(getTenantFilter(req));
     if (resumes.length === 0) {
       return res.status(200).json({
         success: true,

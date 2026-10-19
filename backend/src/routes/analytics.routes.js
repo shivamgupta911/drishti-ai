@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import Resume from '../models/Resume.js';
 import Job from '../models/Job.js';
 import MatchResult from '../models/MatchResult.js';
@@ -8,20 +9,24 @@ import { rankCandidatesForJob } from '../services/matcher.service.js';
 import { buildSkillOntologyGraph } from '../services/network.service.js';
 import { simulateHiringScenario } from '../services/simulator.service.js';
 import { runModelEvaluationLaboratory } from '../services/evaluation.service.js';
+import { getTenantFilter } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
 /**
  * GET /api/analytics/overview
- * Real-time analytics aggregation derived strictly from persisted database records
+ * Real-time analytics aggregation strictly scoped to active tenant.
+ * Prevents any cross-tenant data aggregation or leakage.
  */
 router.get('/overview', async (req, res, next) => {
   try {
     const { jobId } = req.query;
+    const filter = getTenantFilter(req);
+
     const [resumes, jobs, matchResults] = await Promise.all([
-      Resume.find().lean(),
-      Job.find().lean(),
-      MatchResult.find().populate('resumeId', 'candidateName').populate('jobId', 'title').lean(),
+      Resume.find(filter).lean(),
+      Job.find(filter).lean(),
+      MatchResult.find(filter).populate('resumeId', 'candidateName').populate('jobId', 'title').lean(),
     ]);
 
     // 1. Target Job or Primary Job
@@ -33,7 +38,6 @@ router.get('/overview', async (req, res, next) => {
     }
 
     // 2. Score Distribution Histogram
-    // Score bins: <50 (Low), 50-64 (Moderate), 65-79 (Strong), 80-89 (High), 90-100 (Exceptional)
     const relevantMatches = targetJob
       ? matchResults.filter((m) => m.jobId?._id?.toString() === targetJob._id.toString())
       : matchResults;
@@ -61,8 +65,8 @@ router.get('/overview', async (req, res, next) => {
     // 3. Skill Coverage Analysis for Target Job
     const skillCoverage = [];
     if (targetJob && Array.isArray(targetJob.requiredSkills)) {
-      targetJob.requiredSkills.forEach((req) => {
-        const reqName = typeof req === 'string' ? req : req.name;
+      targetJob.requiredSkills.forEach((reqSkill) => {
+        const reqName = typeof reqSkill === 'string' ? reqSkill : reqSkill.name;
         let meetingCandidates = 0;
 
         resumes.forEach((r) => {
@@ -75,7 +79,7 @@ router.get('/overview', async (req, res, next) => {
         const pct = resumes.length > 0 ? Math.round((meetingCandidates / resumes.length) * 100) : 0;
         skillCoverage.push({
           skill: reqName,
-          category: req.category || 'Core',
+          category: reqSkill.category || 'Core',
           meetingCount: meetingCandidates,
           totalPool: resumes.length,
           coveragePct: pct,
@@ -85,7 +89,6 @@ router.get('/overview', async (req, res, next) => {
     }
 
     // 4. Candidate-Job Heatmap Matrix
-    // Grid: Rows = Candidates, Columns = Jobs, Cells = exact evaluated score or null if unevaluated
     const heatmap = {
       candidates: resumes.map((r) => ({ id: r._id.toString(), name: r.candidateName })),
       jobs: jobs.map((j) => ({ id: j._id.toString(), title: j.title })),
@@ -117,7 +120,7 @@ router.get('/overview', async (req, res, next) => {
           jobId: jId,
           jobTitle: j.title,
           evaluated: !!existing,
-          score: existing ? existing.score : null, // Null explicitly indicates unevaluated, not fake 0!
+          score: existing ? existing.score : null,
           tier: existing ? existing.tier : null,
           matchId: existing ? existing.matchId : null,
         });
@@ -125,7 +128,6 @@ router.get('/overview', async (req, res, next) => {
     });
 
     // 5. Score Component Contribution Decomposition
-    // Averages across the evaluated cohort for target job
     let avgSkills = 0;
     let avgExp = 0;
     let avgVector = 0;
@@ -213,7 +215,7 @@ router.get('/overview', async (req, res, next) => {
 
 /**
  * POST /api/analytics/simulate
- * What-If Hiring Simulator: Runs in-memory recalculation with modified weights/thresholds
+ * What-If Hiring Simulator: Runs in-memory recalculation strictly within active tenant workspace
  */
 router.post('/simulate', async (req, res, next) => {
   try {
@@ -223,10 +225,18 @@ router.post('/simulate', async (req, res, next) => {
       return res.status(400).json({ error: 'jobId is required for scenario simulation.' });
     }
 
-    const [job, resumes] = await Promise.all([Job.findById(jobId), Resume.find()]);
+    if (!mongoose.Types.ObjectId.isValid(jobId)) {
+      return res.status(400).json({ error: `Invalid job identifier: '${jobId}'` });
+    }
+
+    const filter = getTenantFilter(req);
+    const [job, resumes] = await Promise.all([
+      Job.findOne({ _id: jobId, ...filter }),
+      Resume.find(filter),
+    ]);
 
     if (!job) {
-      return res.status(404).json({ error: 'Job requisition not found.' });
+      return res.status(404).json({ error: 'Job requisition not found in your workspace.' });
     }
 
     const simulation = simulateHiringScenario(resumes, job, {
@@ -247,11 +257,15 @@ router.post('/simulate', async (req, res, next) => {
 
 /**
  * GET /api/analytics/network-graph
- * Skill Ontology Relationship Graph
+ * Skill Ontology Relationship Graph scoped to active tenant pool
  */
 router.get('/network-graph', async (req, res, next) => {
   try {
-    const [resumes, jobs] = await Promise.all([Resume.find().lean(), Job.find().lean()]);
+    const filter = getTenantFilter(req);
+    const [resumes, jobs] = await Promise.all([
+      Resume.find(filter).lean(),
+      Job.find(filter).lean(),
+    ]);
     const { category, search, minConnections } = req.query;
 
     const graph = buildSkillOntologyGraph(resumes, jobs, {

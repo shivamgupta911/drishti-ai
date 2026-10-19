@@ -1,18 +1,25 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import EvaluationAudit from '../models/EvaluationAudit.js';
+import {
+  authenticate,
+  requireRole,
+  requirePrivateWorkspace,
+  getTenantFilter,
+} from '../middleware/auth.middleware.js';
 
 const router = Router();
 
 /**
  * GET /api/audit-history
- * List versioned evaluation audit records with pagination and filters
+ * List versioned evaluation audit records scoped strictly to active tenant
  */
 router.get('/', async (req, res, next) => {
   try {
     const { jobId, resumeId, page = 1, limit = 20 } = req.query;
-    const filter = {};
-    if (jobId) filter.jobId = jobId;
-    if (resumeId) filter.resumeId = resumeId;
+    const filter = { ...getTenantFilter(req) };
+    if (jobId && mongoose.Types.ObjectId.isValid(jobId)) filter.jobId = jobId;
+    if (resumeId && mongoose.Types.ObjectId.isValid(resumeId)) filter.resumeId = resumeId;
 
     const skip = (Number(page) - 1) * Number(limit);
     const [total, records] = await Promise.all([
@@ -39,16 +46,19 @@ router.get('/', async (req, res, next) => {
 
 /**
  * GET /api/audit-history/:evaluationId
- * Fetch single immutable evaluation audit record
+ * Fetch single immutable evaluation audit record scoped strictly to active tenant
  */
 router.get('/:evaluationId', async (req, res, next) => {
   try {
-    const record = await EvaluationAudit.findOne({ evaluationId: req.params.evaluationId })
+    const record = await EvaluationAudit.findOne({
+      evaluationId: req.params.evaluationId,
+      ...getTenantFilter(req),
+    })
       .populate('resumeId')
       .populate('jobId');
 
     if (!record) {
-      return res.status(404).json({ error: 'Audit evaluation record not found.' });
+      return res.status(404).json({ error: 'Audit evaluation record not found in your workspace.' });
     }
 
     res.status(200).json({
@@ -62,20 +72,29 @@ router.get('/:evaluationId', async (req, res, next) => {
 
 /**
  * POST /api/audit-history/:evaluationId/override
- * Record an authorized recruiter override with audit trail and justification
+ * Record an authorized recruiter override with audit trail in private workspace.
+ * Public demo users are forbidden from recording overrides.
  */
-router.post('/:evaluationId/override', async (req, res, next) => {
+router.post('/:evaluationId/override', authenticate, requirePrivateWorkspace, requireRole('recruiter', 'admin'), async (req, res, next) => {
   try {
-    const { newDecision, reason, overriddenBy = 'Sarah Connor (Senior Talent Partner)' } = req.body;
+    const { newDecision, reason } = req.body;
 
     if (!newDecision || !reason) {
       return res.status(400).json({ error: 'Both newDecision and reason are required to log an override.' });
     }
 
-    const record = await EvaluationAudit.findOne({ evaluationId: req.params.evaluationId });
+    const record = await EvaluationAudit.findOne({
+      evaluationId: req.params.evaluationId,
+      ...getTenantFilter(req),
+    });
+
     if (!record) {
-      return res.status(404).json({ error: 'Audit evaluation record not found.' });
+      return res.status(404).json({ error: 'Audit evaluation record not found in your workspace.' });
     }
+
+    const overriddenBy = req.user?.name
+      ? `${req.user.name} (${req.user.role})`
+      : (req.user?.email || 'Authorized Evaluator');
 
     record.recruiterOverride = {
       isOverridden: true,
@@ -90,56 +109,8 @@ router.post('/:evaluationId/override', async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: 'Recruiter override successfully logged in audit ledger.',
+      message: 'Recruiter override successfully recorded in audit ledger.',
       data: record,
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * GET /api/audit-history/compare-versions
- * Side-by-side comparison between two historical evaluation audit records
- */
-router.get('/compare-versions', async (req, res, next) => {
-  try {
-    const { evalIdA, evalIdB } = req.query;
-
-    if (!evalIdA || !evalIdB) {
-      return res.status(400).json({ error: 'Please provide both evalIdA and evalIdB parameters.' });
-    }
-
-    const [evalA, evalB] = await Promise.all([
-      EvaluationAudit.findOne({ evaluationId: evalIdA }).populate('resumeId').populate('jobId'),
-      EvaluationAudit.findOne({ evaluationId: evalIdB }).populate('resumeId').populate('jobId'),
-    ]);
-
-    if (!evalA || !evalB) {
-      return res.status(404).json({ error: 'One or both evaluation audit versions could not be located.' });
-    }
-
-    res.status(200).json({
-      success: true,
-      comparison: {
-        versionA: {
-          id: evalA.evaluationId,
-          algorithmVersion: evalA.algorithmVersion,
-          score: evalA.overallScore,
-          tier: evalA.tier,
-          componentScores: evalA.componentScores,
-          createdAt: evalA.createdAt,
-        },
-        versionB: {
-          id: evalB.evaluationId,
-          algorithmVersion: evalB.algorithmVersion,
-          score: evalB.overallScore,
-          tier: evalB.tier,
-          componentScores: evalB.componentScores,
-          createdAt: evalB.createdAt,
-        },
-        scoreDelta: evalB.overallScore - evalA.overallScore,
-      },
     });
   } catch (error) {
     next(error);

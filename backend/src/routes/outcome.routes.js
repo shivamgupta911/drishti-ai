@@ -1,19 +1,26 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import RecruitmentOutcome from '../models/RecruitmentOutcome.js';
 import Resume from '../models/Resume.js';
 import Job from '../models/Job.js';
+import {
+  authenticate,
+  requireRole,
+  requirePrivateWorkspace,
+  getTenantFilter,
+} from '../middleware/auth.middleware.js';
 
 const router = Router();
 
 /**
  * GET /api/outcomes
- * List all recorded recruitment outcomes with optional filters by jobId or stage
+ * List recorded recruitment outcomes scoped to active tenant with optional filters
  */
 router.get('/', async (req, res, next) => {
   try {
     const { jobId, stage } = req.query;
-    const filter = {};
-    if (jobId) filter.jobId = jobId;
+    const filter = { ...getTenantFilter(req) };
+    if (jobId && mongoose.Types.ObjectId.isValid(jobId)) filter.jobId = jobId;
     if (stage) filter.stage = stage;
 
     const outcomes = await RecruitmentOutcome.find(filter)
@@ -21,7 +28,6 @@ router.get('/', async (req, res, next) => {
       .populate('jobId', 'title department')
       .sort({ updatedAt: -1 });
 
-    // Aggregate stage metrics
     const stageCounts = {
       pending: 0,
       shortlisted: 0,
@@ -50,9 +56,10 @@ router.get('/', async (req, res, next) => {
 
 /**
  * POST /api/outcomes
- * Record or update candidate recruitment pipeline outcome
+ * Record or update candidate recruitment pipeline outcome in private workspace.
+ * Prevents demo tampering and cross-tenant outcome forgery.
  */
-router.post('/', async (req, res, next) => {
+router.post('/', authenticate, requirePrivateWorkspace, requireRole('recruiter', 'admin'), async (req, res, next) => {
   try {
     const {
       resumeId,
@@ -65,16 +72,34 @@ router.post('/', async (req, res, next) => {
       culturalAlignmentRating,
       notes,
       dispositionReason,
-      recordedBy,
     } = req.body;
 
     if (!resumeId || !jobId) {
       return res.status(400).json({ error: 'Both resumeId and jobId are required.' });
     }
 
+    if (!mongoose.Types.ObjectId.isValid(resumeId) || !mongoose.Types.ObjectId.isValid(jobId)) {
+      return res.status(400).json({ error: 'Invalid candidate or job identifier format.' });
+    }
+
+    // Verify candidate and job belong to this user's workspace
+    const [resume, job] = await Promise.all([
+      Resume.findOne({ _id: resumeId, ...getTenantFilter(req) }),
+      Job.findOne({ _id: jobId, ...getTenantFilter(req) }),
+    ]);
+
+    if (!resume || !job) {
+      return res.status(404).json({
+        error: 'The referenced candidate profile or job posting could not be found in your workspace.',
+      });
+    }
+
     const outcome = await RecruitmentOutcome.findOneAndUpdate(
-      { resumeId, jobId },
+      { ownerId: req.tenant.id, resumeId, jobId },
       {
+        ownerId: req.tenant.id,
+        isDemo: false,
+        quarantined: false,
         resumeId,
         jobId,
         matchResultId,
@@ -87,10 +112,10 @@ router.post('/', async (req, res, next) => {
           notes: notes || '',
           dispositionReason: dispositionReason || '',
         },
-        recordedBy: recordedBy || {
-          userId: 'usr_recruiter_01',
-          userName: 'Sarah Connor',
-          userRole: 'recruiter',
+        recordedBy: {
+          userId: req.user?.id || req.tenant.id,
+          userName: req.user?.name || req.user?.email || 'Authorized Evaluator',
+          userRole: req.user?.role || 'recruiter',
         },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -108,11 +133,11 @@ router.post('/', async (req, res, next) => {
 
 /**
  * GET /api/outcomes/analytics
- * Computes outcome funnel conversion rates and compares against score tier predictions
+ * Computes outcome funnel conversion rates and tier correlation scoped strictly to active tenant
  */
 router.get('/analytics', async (req, res, next) => {
   try {
-    const outcomes = await RecruitmentOutcome.find().lean();
+    const outcomes = await RecruitmentOutcome.find(getTenantFilter(req)).lean();
 
     const total = outcomes.length;
     const stages = ['pending', 'shortlisted', 'interviewed', 'hired', 'rejected', 'withdrawn'];
@@ -124,8 +149,6 @@ router.get('/analytics', async (req, res, next) => {
       rate: total > 0 ? Math.round((outcomes.filter((o) => o.stage === s).length / total) * 100) : 0,
     }));
 
-    // Tier to Hire Correlation
-    // Compares candidates who received High (>=75) vs Moderate (50-74) vs Low (<50) match score
     const highFit = outcomes.filter((o) => (o.predictedScore || 0) >= 75);
     const modFit = outcomes.filter((o) => (o.predictedScore || 0) >= 50 && (o.predictedScore || 0) < 75);
     const lowFit = outcomes.filter((o) => (o.predictedScore || 0) < 50);

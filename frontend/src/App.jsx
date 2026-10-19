@@ -30,7 +30,7 @@ import {
   Menu,
   X
 } from 'lucide-react';
-import { getApiUrl, safeParseResponse } from './config/api';
+import { getApiUrl, safeParseResponse, requestDemoSession } from './config/api';
 import EvidencePanel from './components/EvidencePanel';
 import WhatIfSimulator from './components/WhatIfSimulator';
 import AnalyticsLab from './components/AnalyticsLab';
@@ -320,7 +320,28 @@ export default function App() {
     }
   };
 
+  const handlePersonaChange = async (r) => {
+    let newUser;
+    if (r === 'recruiter') {
+      newUser = { name: 'Sarah Connor', role: 'recruiter', title: 'Senior Talent Partner', email: 'recruiter@drishti.ai' };
+    } else if (r === 'hiring_manager') {
+      newUser = { name: 'David Vance', role: 'hiring_manager', title: 'VP Platform Engineering', email: 'manager@drishti.ai' };
+    } else if (r === 'admin') {
+      newUser = { name: 'Elena Rostova', role: 'admin', title: 'Compliance & Security Admin', email: 'admin@drishti.ai' };
+    } else {
+      newUser = { name: 'Alex Mercer', role: 'candidate', title: 'Candidate Profile', email: 'candidate@drishti.ai' };
+    }
+    setActiveUser(newUser);
+    showBanner(`Active persona: ${r.replace('_', ' ').toUpperCase()}`);
+    await requestDemoSession(r);
+    await fetchResumesAndJobs();
+  };
+
   const handleSeedData = async () => {
+    if (activeUser.role !== 'admin') {
+      showBanner('Database re-seed requires Admin role. Switch to the Admin persona.');
+      return;
+    }
     setLoadingData(true);
     try {
       const res = await fetch(getApiUrl('/api/seed'), {
@@ -526,6 +547,10 @@ export default function App() {
   };
 
   const handleDeleteResume = async (id) => {
+    if (activeUser.role !== 'admin') {
+      showBanner('Candidate profile deletion requires Admin role. Switch to the Admin persona.');
+      return;
+    }
     if (!window.confirm('Are you sure you want to delete this candidate profile?')) return;
     try {
       const res = await fetch(getApiUrl(`/api/resumes/${id}`), { method: 'DELETE' });
@@ -538,6 +563,10 @@ export default function App() {
   };
 
   const handleDeleteJob = async (id) => {
+    if (activeUser.role !== 'admin') {
+      showBanner('Job posting deletion requires Admin role. Switch to the Admin persona.');
+      return;
+    }
     if (!window.confirm('Are you sure you want to delete this job posting?')) return;
     try {
       const res = await fetch(getApiUrl(`/api/jobs/${id}`), { method: 'DELETE' });
@@ -550,8 +579,12 @@ export default function App() {
   };
 
   useEffect(() => {
-    checkHealth();
-    fetchResumesAndJobs();
+    const initApp = async () => {
+      await requestDemoSession('recruiter');
+      checkHealth();
+      fetchResumesAndJobs();
+    };
+    initApp();
   }, []);
 
   useEffect(() => {
@@ -722,23 +755,14 @@ export default function App() {
               <UserCheck className="w-3.5 h-3.5 text-[#187D70] shrink-0" />
               <select
                 value={activeUser.role}
-                onChange={(e) => {
-                  const r = e.target.value;
-                  if (r === 'recruiter') {
-                    setActiveUser({ name: 'Sarah Connor', role: 'recruiter', title: 'Senior Talent Partner', email: 'recruiter@drishti.ai' });
-                  } else if (r === 'hiring_manager') {
-                    setActiveUser({ name: 'David Vance', role: 'hiring_manager', title: 'VP Platform Engineering', email: 'manager@drishti.ai' });
-                  } else {
-                    setActiveUser({ name: 'Alex Mercer', role: 'candidate', title: 'Candidate Profile', email: 'candidate@drishti.ai' });
-                  }
-                  showBanner(`Active persona: ${r.replace('_', ' ').toUpperCase()}`);
-                }}
+                onChange={(e) => handlePersonaChange(e.target.value)}
                 aria-label="Select User Persona"
                 className="bg-transparent text-[#202B35] font-medium focus:outline-none cursor-pointer"
               >
                 <option value="recruiter">Recruiter</option>
                 <option value="hiring_manager">Manager</option>
                 <option value="candidate">Candidate</option>
+                <option value="admin">Admin</option>
               </select>
             </div>
 
@@ -909,23 +933,14 @@ export default function App() {
                   </div>
                   <select
                     value={activeUser.role}
-                    onChange={(e) => {
-                      const r = e.target.value;
-                      if (r === 'recruiter') {
-                        setActiveUser({ name: 'Sarah Connor', role: 'recruiter', title: 'Senior Talent Partner', email: 'recruiter@drishti.ai' });
-                      } else if (r === 'hiring_manager') {
-                        setActiveUser({ name: 'David Vance', role: 'hiring_manager', title: 'VP Platform Engineering', email: 'manager@drishti.ai' });
-                      } else {
-                        setActiveUser({ name: 'Alex Mercer', role: 'candidate', title: 'Candidate Profile', email: 'candidate@drishti.ai' });
-                      }
-                      showBanner(`Active persona: ${r.replace('_', ' ').toUpperCase()}`);
-                    }}
+                    onChange={(e) => handlePersonaChange(e.target.value)}
                     aria-label="Change active user persona"
                     className="w-full min-h-[44px] h-11 px-3 bg-white border border-[#DDE3E1] rounded-lg text-xs font-medium text-[#202B35] focus:outline-none focus:border-[#187D70] cursor-pointer"
                   >
                     <option value="recruiter">Sarah Connor (Recruiter)</option>
                     <option value="hiring_manager">David Vance (Hiring Manager)</option>
                     <option value="candidate">Alex Mercer (Candidate)</option>
+                    <option value="admin">Elena Rostova (Compliance & Security Admin)</option>
                   </select>
                 </div>
 

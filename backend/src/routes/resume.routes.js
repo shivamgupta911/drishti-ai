@@ -1,7 +1,14 @@
 import { Router } from 'express';
 import multer from 'multer';
+import mongoose from 'mongoose';
 import Resume from '../models/Resume.js';
 import { parseResumeText, parseDocumentBuffer } from '../services/parser.service.js';
+import {
+  authenticate,
+  requireRole,
+  requirePrivateWorkspace,
+  getTenantFilter,
+} from '../middleware/auth.middleware.js';
 
 const router = Router();
 const upload = multer({
@@ -18,9 +25,9 @@ const upload = multer({
 
 /**
  * POST /api/resumes
- * Create resume from structured JSON or raw text
+ * Create candidate profile in private user workspace (Recruiter / Admin only)
  */
-router.post('/', async (req, res, next) => {
+router.post('/', authenticate, requirePrivateWorkspace, requireRole('recruiter', 'admin'), async (req, res, next) => {
   try {
     const { rawText, candidateName, totalExperienceYears, skills, education, anonymize } = req.body;
 
@@ -41,10 +48,15 @@ router.post('/', async (req, res, next) => {
       };
     }
 
+    // Bind strictly to authenticated tenant context
+    resumeData.ownerId = req.tenant.id;
+    resumeData.isDemo = false;
+    resumeData.quarantined = false;
+
     const resume = await Resume.create(resumeData);
     res.status(201).json({
       success: true,
-      message: 'Resume parsed and ingested successfully.',
+      message: 'Resume parsed and ingested into your private workspace successfully.',
       data: resume,
     });
   } catch (error) {
@@ -54,9 +66,9 @@ router.post('/', async (req, res, next) => {
 
 /**
  * POST /api/resumes/upload
- * Ingest resume from uploaded PDF file
+ * Ingest resume from uploaded PDF file into private workspace (Recruiter / Admin only)
  */
-router.post('/upload', upload.single('resumeFile'), async (req, res, next) => {
+router.post('/upload', authenticate, requirePrivateWorkspace, requireRole('recruiter', 'admin'), upload.single('resumeFile'), async (req, res, next) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Please upload a PDF or TXT resume file.' });
@@ -65,11 +77,15 @@ router.post('/upload', upload.single('resumeFile'), async (req, res, next) => {
     const anonymize = req.body.anonymize !== 'false';
     const parsedAttributes = await parseDocumentBuffer(req.file.buffer, req.file.mimetype, { anonymize });
 
+    parsedAttributes.ownerId = req.tenant.id;
+    parsedAttributes.isDemo = false;
+    parsedAttributes.quarantined = false;
+
     const resume = await Resume.create(parsedAttributes);
 
     res.status(201).json({
       success: true,
-      message: 'Resume file parsed and stored successfully.',
+      message: 'Resume file parsed and stored in your private workspace successfully.',
       data: resume,
     });
   } catch (error) {
@@ -79,11 +95,12 @@ router.post('/upload', upload.single('resumeFile'), async (req, res, next) => {
 
 /**
  * GET /api/resumes
- * List all parsed resumes
+ * List candidate profiles scoped to the active tenant (Demo visitors see demo data; users see their own)
  */
 router.get('/', async (req, res, next) => {
   try {
-    const resumes = await Resume.find().sort({ createdAt: -1 });
+    const filter = getTenantFilter(req);
+    const resumes = await Resume.find(filter).sort({ createdAt: -1 });
     res.status(200).json({
       success: true,
       count: resumes.length,
@@ -96,11 +113,21 @@ router.get('/', async (req, res, next) => {
 
 /**
  * GET /api/resumes/:id
- * Fetch single resume by ID
+ * Fetch single candidate profile by ID scoped strictly to active tenant (IDOR protected)
  */
 router.get('/:id', async (req, res, next) => {
   try {
-    const resume = await Resume.findById(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: `Invalid resume identifier: '${req.params.id}'` });
+    }
+
+    // Role-based candidate self-view constraint
+    if (req.user?.role === 'candidate' && req.user.resumeId && req.user.resumeId !== req.params.id) {
+      return res.status(403).json({ error: 'Access denied: You may only view your own candidate profile.' });
+    }
+
+    const filter = { _id: req.params.id, ...getTenantFilter(req) };
+    const resume = await Resume.findOne(filter);
     if (!resume) {
       return res.status(404).json({ error: 'Resume not found' });
     }
@@ -112,11 +139,16 @@ router.get('/:id', async (req, res, next) => {
 
 /**
  * DELETE /api/resumes/:id
- * Delete a resume
+ * Delete a candidate profile from private workspace (Workspace owner only)
  */
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', authenticate, requirePrivateWorkspace, requireRole('recruiter', 'admin'), async (req, res, next) => {
   try {
-    const resume = await Resume.findByIdAndDelete(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: `Invalid resume identifier: '${req.params.id}'` });
+    }
+
+    const filter = { _id: req.params.id, ownerId: req.tenant.id };
+    const resume = await Resume.findOneAndDelete(filter);
     if (!resume) {
       return res.status(404).json({ error: 'Resume not found' });
     }

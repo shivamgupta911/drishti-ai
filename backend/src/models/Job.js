@@ -45,10 +45,29 @@ const jobSchema = new mongoose.Schema(
       default: 'Bachelor degree in Computer Science or equivalent practical experience',
     },
     responsibilities: [{ type: String }],
+    ownerId: {
+      type: String,
+      required: true,
+      default: 'demo',
+      index: true,
+    },
+    isDemo: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    quarantined: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   {
     timestamps: true,
   }
 );
+
+jobSchema.index({ ownerId: 1, createdAt: -1 });
+jobSchema.index({ isDemo: 1, quarantined: 1 });
 
 export default mongoose.model('Job', jobSchema);

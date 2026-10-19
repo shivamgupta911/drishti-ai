@@ -56,10 +56,29 @@ const resumeSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    ownerId: {
+      type: String,
+      required: true,
+      default: 'demo',
+      index: true,
+    },
+    isDemo: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    quarantined: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   {
     timestamps: true,
   }
 );
+
+resumeSchema.index({ ownerId: 1, createdAt: -1 });
+resumeSchema.index({ isDemo: 1, quarantined: 1 });
 
 export default mongoose.model('Resume', resumeSchema);

@@ -1,8 +1,62 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import MatchResult from '../models/MatchResult.js';
 import { generateRegulatoryAuditReport } from '../services/fairness.service.js';
+import {
+  authenticate,
+  requireRole,
+  getTenantFilter,
+} from '../middleware/auth.middleware.js';
 
 const router = express.Router();
+
+/**
+ * Validates webhook destination URL against Server-Side Request Forgery (SSRF)
+ */
+function validateWebhookDestination(urlStr) {
+  if (!urlStr) return;
+  let parsed;
+  try {
+    parsed = new URL(urlStr);
+  } catch {
+    throw new Error('Invalid webhook destination URL format.');
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Webhook destinations must use the HTTPS protocol.');
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  // Block localhost, internal domains, cloud metadata services
+  const blockedHosts = [
+    'localhost',
+    '127.0.0.1',
+    '0.0.0.0',
+    '::1',
+    'metadata.google.internal',
+    '169.254.169.254',
+  ];
+  if (blockedHosts.includes(hostname) || hostname.endsWith('.local') || hostname.endsWith('.internal')) {
+    throw new Error('Webhook dispatch to local, private, or cloud metadata endpoints is prohibited (SSRF prevention).');
+  }
+
+  // Block private IPv4 ranges (10.x.x.x, 192.168.x.x, 172.16-31.x.x, 169.254.x.x, 127.x.x.x)
+  const ipMatch = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipMatch) {
+    const [, a, b] = ipMatch.map(Number);
+    if (
+      a === 10 ||
+      a === 127 ||
+      a === 0 ||
+      (a === 169 && b === 254) ||
+      (a === 192 && b === 168) ||
+      (a === 172 && b >= 16 && b <= 31)
+    ) {
+      throw new Error('Webhook dispatch to private IP addresses is prohibited (SSRF prevention).');
+    }
+  }
+}
 
 const SUPPORTED_PLATFORMS = [
   { id: 'greenhouse', name: 'Greenhouse Harvest API', status: 'ready', protocol: 'REST / Webhook' },
@@ -25,7 +79,8 @@ router.get('/platforms', (req, res) => {
 
 /**
  * POST /api/integrations/webhook/dispatch
- * Simulate or execute webhook dispatch of an explainable match audit to an ATS
+ * Simulate or execute webhook dispatch of an explainable match audit to an ATS.
+ * Scoped strictly to the active tenant workspace.
  */
 router.post('/webhook/dispatch', async (req, res, next) => {
   try {
@@ -35,12 +90,24 @@ router.post('/webhook/dispatch', async (req, res, next) => {
       return res.status(400).json({ error: 'matchId is required for webhook dispatch.' });
     }
 
-    const match = await MatchResult.findById(matchId)
+    if (!mongoose.Types.ObjectId.isValid(matchId)) {
+      return res.status(400).json({ error: `Invalid match identifier: '${matchId}'` });
+    }
+
+    if (webhookUrl) {
+      try {
+        validateWebhookDestination(webhookUrl);
+      } catch (validationErr) {
+        return res.status(400).json({ error: validationErr.message });
+      }
+    }
+
+    const match = await MatchResult.findOne({ _id: matchId, ...getTenantFilter(req) })
       .populate('resumeId')
       .populate('jobId');
 
     if (!match) {
-      return res.status(404).json({ error: 'Match evaluation record not found.' });
+      return res.status(404).json({ error: 'Match evaluation record not found in your workspace.' });
     }
 
     const auditDossier = generateRegulatoryAuditReport(match, match.resumeId, match.jobId);
@@ -67,8 +134,7 @@ router.post('/webhook/dispatch', async (req, res, next) => {
       deliveryStatus: 'DELIVERED_SIMULATED',
     };
 
-    // If a valid live destination URL was provided, attempt outbound dispatch
-    if (webhookUrl && (webhookUrl.startsWith('http://') || webhookUrl.startsWith('https://'))) {
+    if (webhookUrl) {
       try {
         await fetch(webhookUrl, {
           method: 'POST',
@@ -93,19 +159,23 @@ router.post('/webhook/dispatch', async (req, res, next) => {
 
 /**
  * GET /api/integrations/export/:matchId
- * Export explainable evaluation report in Markdown, JSON, or Audit format
+ * Export explainable evaluation report in Markdown, JSON, or Audit format scoped strictly to tenant
  */
 router.get('/export/:matchId', async (req, res, next) => {
   try {
     const { matchId } = req.params;
     const format = (req.query.format || 'json').toLowerCase();
 
-    const match = await MatchResult.findById(matchId)
+    if (!mongoose.Types.ObjectId.isValid(matchId)) {
+      return res.status(400).json({ error: `Invalid match identifier: '${matchId}'` });
+    }
+
+    const match = await MatchResult.findOne({ _id: matchId, ...getTenantFilter(req) })
       .populate('resumeId')
       .populate('jobId');
 
     if (!match) {
-      return res.status(404).json({ error: 'Match evaluation not found.' });
+      return res.status(404).json({ error: 'Match evaluation not found in your workspace.' });
     }
 
     const audit = generateRegulatoryAuditReport(match, match.resumeId, match.jobId);

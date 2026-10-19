@@ -49,14 +49,31 @@ const recruitmentOutcomeSchema = new mongoose.Schema(
       userName: { type: String, default: 'Recruiter' },
       userRole: { type: String, default: 'recruiter' },
     },
+    ownerId: {
+      type: String,
+      required: true,
+      default: 'demo',
+      index: true,
+    },
+    isDemo: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    quarantined: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   {
     timestamps: true,
   }
 );
 
-// Compound index for quick lookup
-recruitmentOutcomeSchema.index({ jobId: 1, stage: 1 });
-recruitmentOutcomeSchema.index({ resumeId: 1, jobId: 1 }, { unique: true });
+// Compound index for quick multi-tenant lookup
+recruitmentOutcomeSchema.index({ ownerId: 1, jobId: 1, stage: 1 });
+recruitmentOutcomeSchema.index({ ownerId: 1, resumeId: 1, jobId: 1 }, { unique: true });
+recruitmentOutcomeSchema.index({ isDemo: 1, quarantined: 1 });
 
 export default mongoose.model('RecruitmentOutcome', recruitmentOutcomeSchema);
