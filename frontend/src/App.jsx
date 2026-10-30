@@ -46,6 +46,8 @@ import WhatIfSimulator from './components/WhatIfSimulator';
 import AnalyticsLab from './components/AnalyticsLab';
 import AuditHistoryModal from './components/AuditHistoryModal';
 import OutcomeTracker from './components/OutcomeTracker';
+import FairnessAuditView from './components/FairnessAuditView';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Navigation catalog with calibrated render widths and metadata
 const NAV_ITEMS = [
@@ -231,6 +233,7 @@ export default function App() {
   // Fairness & Bias Audit state
   const [fairnessAuditData, setFairnessAuditData] = useState(null);
   const [loadingFairness, setLoadingFairness] = useState(false);
+  const [fairnessError, setFairnessError] = useState(null);
   const [fairnessThreshold, setFairnessThreshold] = useState(65);
 
   // ATS Webhook Modal state
@@ -511,16 +514,26 @@ export default function App() {
   };
 
   const fetchFairnessAudit = async (jobId, threshold = fairnessThreshold) => {
-    if (!jobId) return;
+    if (!jobId) {
+      setFairnessAuditData(null);
+      setFairnessError(null);
+      return;
+    }
     setLoadingFairness(true);
+    setFairnessError(null);
     try {
       const res = await fetch(getApiUrl(`/api/matches/fairness-audit/${jobId}?threshold=${threshold}`), {
         headers: { Accept: 'application/json' },
       });
       const data = await safeParseResponse(res);
+      if (data?.error) {
+        throw new Error(data.error);
+      }
       setFairnessAuditData(data);
     } catch (err) {
       console.error('Error fetching fairness audit:', err);
+      setFairnessError(err.message || 'Failed to retrieve fairness audit metrics.');
+      setFairnessAuditData(null);
     } finally {
       setLoadingFairness(false);
     }
@@ -699,10 +712,14 @@ export default function App() {
   }, [activeTab, leaderboardJobId]);
 
   useEffect(() => {
-    if (activeTab === 'fairness' && (selectedJobId || leaderboardJobId)) {
-      fetchFairnessAudit(selectedJobId || leaderboardJobId, fairnessThreshold);
+    if (activeTab === 'fairness') {
+      const targetJob = selectedJobId || leaderboardJobId || (jobs.length > 0 ? jobs[0]._id : '');
+      if (targetJob) {
+        if (!selectedJobId) setSelectedJobId(targetJob);
+        fetchFairnessAudit(targetJob, fairnessThreshold);
+      }
     }
-  }, [activeTab, selectedJobId, leaderboardJobId, fairnessThreshold]);
+  }, [activeTab, selectedJobId, leaderboardJobId, jobs, fairnessThreshold]);
 
   return (
     <div className="min-h-screen bg-[#F5F6F3] text-[#202B35] font-sans antialiased selection:bg-[#E5F3EF] selection:text-[#187D70] pb-20">
@@ -2113,193 +2130,38 @@ export default function App() {
         {/* TAB 7: FAIRNESS & DISPARATE IMPACT AUDIT (EEOC 4/5ths)          */}
         {/* ============================================================== */}
         {activeTab === 'fairness' && (
-          <div className="space-y-8">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#DDE3E1] pb-6">
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-[#202B35] tracking-tight">
-                  Algorithmic Fairness &amp; Bias Audit
-                </h1>
-                <p className="text-[#65717D] text-sm mt-1">
-                  Disparate impact analysis and EEOC Uniform Guidelines verification across candidate seniority cohorts.
-                </p>
-              </div>
-
-              {/* Threshold & Role Filters */}
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#65717D] font-medium">Benchmark:</span>
-                  <select
-                    value={fairnessThreshold}
-                    onChange={(e) => {
-                      const t = Number(e.target.value);
-                      setFairnessThreshold(t);
-                      fetchFairnessAudit(selectedJobId || (jobs.length > 0 ? jobs[0]._id : ''), t);
-                    }}
-                    className="bg-white border border-[#DDE3E1] rounded-lg px-2.5 py-1.5 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] cursor-pointer shadow-xs font-medium"
-                  >
-                    <option value={60}>60% (Broad Fit)</option>
-                    <option value={65}>65% (EEOC Standard)</option>
-                    <option value={75}>75% (Strict Senior)</option>
-                    <option value={80}>80% (Top Tier)</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#65717D] font-medium shrink-0">Role:</span>
-                  <select
-                    value={selectedJobId}
-                    onChange={(e) => {
-                      setSelectedJobId(e.target.value);
-                      fetchFairnessAudit(e.target.value, fairnessThreshold);
-                    }}
-                    className="bg-white border border-[#DDE3E1] rounded-lg px-3 py-1.5 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] cursor-pointer shadow-xs font-medium max-w-[180px] sm:max-w-none truncate"
-                  >
-                    {jobs.map((j) => {
-                      const companyName = (j.company && j.company.trim() && j.company !== 'Drishti AI Partner')
-                        ? j.company
-                        : 'Company not specified';
-                      return (
-                        <option key={j._id} value={j._id}>
-                          {j.title} ({companyName})
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {loadingFairness ? (
-              <div className="p-12 text-center text-[#65717D] space-y-3">
-                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-[#187D70]" />
-                <p className="text-xs">Computing disparate impact across candidate seniority cohorts...</p>
-              </div>
-            ) : fairnessAuditData?.fairnessAudit ? (
-              <div className="space-y-6">
-                
-                {/* Status Hero Card */}
-                <div className={`p-6 rounded-xl border shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6 ${
-                  fairnessAuditData.fairnessAudit.adverseImpactDetected
-                    ? 'bg-[#FDF6E2] border-[#F5D698] text-[#A96512]'
-                    : 'bg-[#E3F5EC] border-[#A7E4C4] text-[#187D58]'
-                }`}>
-                  <div className="flex items-start gap-4">
-                    <div className="p-3 rounded-lg bg-white/70 shadow-xs shrink-0">
-                      <ShieldCheck className="w-7 h-7" />
-                    </div>
-                    <div>
-                      <div className="text-[11px] font-mono uppercase tracking-wider font-semibold opacity-80">Compliance Audit Result</div>
-                      <h2 className="text-xl font-bold mt-0.5">
-                        {fairnessAuditData.fairnessAudit.adverseImpactDetected
-                          ? 'Potential Adverse Impact Detected'
-                          : 'EEOC Four-Fifths Rule Compliant'}
-                      </h2>
-                      <p className="text-xs mt-1.5 max-w-2xl leading-relaxed opacity-90">
-                        {fairnessAuditData.fairnessAudit.methodology}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-6 border-t md:border-t-0 md:border-l border-current/20 pt-4 md:pt-0 md:pl-6 text-xs shrink-0">
-                    <div>
-                      <span className="opacity-80 block font-medium">Cohort Pool</span>
-                      <span className="text-2xl font-bold tabular-nums">{fairnessAuditData.fairnessAudit.totalCohortSize}</span>
-                    </div>
-                    <div>
-                      <span className="opacity-80 block font-medium">Pass Rate</span>
-                      <span className="text-2xl font-bold tabular-nums">{fairnessAuditData.fairnessAudit.overallPassRate}%</span>
-                    </div>
-                    <div>
-                      <span className="opacity-80 block font-medium">Benchmark</span>
-                      <span className="text-2xl font-bold tabular-nums">&gt;={fairnessAuditData.fairnessAudit.passThreshold}%</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Cohort Breakdown Table */}
-                <div className="p-6 rounded-xl bg-white border border-[#DDE3E1] shadow-xs space-y-4">
-                  <h3 className="text-sm font-semibold text-[#202B35] flex items-center gap-2">
-                    <Users className="w-4 h-4 text-[#187D70]" />
-                    <span>Seniority Cohort Selection Rates &amp; Adverse Impact Ratio</span>
-                  </h3>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-[#EEF2F1] text-[#65717D] uppercase font-mono text-[10px] tracking-wider border-b border-[#DDE3E1]">
-                        <tr>
-                          <th className="py-3 px-4">Cohort Bracket</th>
-                          <th className="py-3 px-4">Candidate Count</th>
-                          <th className="py-3 px-4">Qualified Count</th>
-                          <th className="py-3 px-4">Selection Rate</th>
-                          <th className="py-3 px-4">4/5ths Impact Ratio</th>
-                          <th className="py-3 px-4 text-right">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#DDE3E1] text-[#202B35]">
-                        {fairnessAuditData.fairnessAudit.cohortBreakdown.map((row) => (
-                          <tr key={row.key} className="hover:bg-[#F9FAF9] transition-colors">
-                            <td className="py-3 px-4 font-semibold text-[#202B35]">{row.label}</td>
-                            <td className="py-3 px-4 font-mono tabular-nums">{row.totalCandidates}</td>
-                            <td className="py-3 px-4 font-mono font-semibold text-[#187D58] tabular-nums">{row.passedCount}</td>
-                            <td className="py-3 px-4 font-mono tabular-nums">
-                              <div className="flex items-center gap-2">
-                                <div className="w-16 h-1.5 rounded-full bg-[#EEF2F1] overflow-hidden">
-                                  <div className="h-full bg-[#187D70] rounded-full" style={{ width: `${row.selectionRate}%` }} />
-                                </div>
-                                <span>{row.selectionRate}%</span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 font-mono tabular-nums">
-                              <span className={row.satisfiesFourFifthsRule ? 'text-[#187D58] font-bold' : 'text-[#A96512] font-bold'}>
-                                {row.impactRatio.toFixed(2)}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              {row.satisfiesFourFifthsRule ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#E3F5EC] text-[#187D58] border border-[#A7E4C4] text-[10px] font-medium">
-                                  <CheckCircle2 className="w-3 h-3" /> Satisfies 80% Rule
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#FDF6E2] text-[#A96512] border border-[#F5D698] text-[10px] font-medium">
-                                  <AlertTriangle className="w-3 h-3" /> Review Advised (&lt;0.80)
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Regulatory Standards Reference Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                  <div className="p-4 rounded-xl bg-white border border-[#DDE3E1] shadow-xs space-y-1">
-                    <span className="font-semibold text-[#202B35]">NYC Local Law 144</span>
-                    <p className="text-[#65717D] text-[11px] leading-relaxed">
-                      Independent bias audit verified. Demographic factors completely stripped prior to attribute matching.
-                    </p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-white border border-[#DDE3E1] shadow-xs space-y-1">
-                    <span className="font-semibold text-[#202B35]">EU AI Act (High-Risk Recruiter)</span>
-                    <p className="text-[#65717D] text-[11px] leading-relaxed">
-                      Deterministic explainability rationale provided for every scored competency and deducted gap.
-                    </p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-white border border-[#DDE3E1] shadow-xs space-y-1">
-                    <span className="font-semibold text-[#202B35]">EEOC Selection Guidelines</span>
-                    <p className="text-[#65717D] text-[11px] leading-relaxed">
-                      Four-Fifths Rule continuous telemetry ensures equitable scoring across seniority cohorts.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="p-8 rounded-xl bg-white border border-[#DDE3E1] text-center text-xs text-[#65717D]">
-                Please select a job role above to view its algorithmic fairness audit and disparate impact analysis.
-              </div>
-            )}
-          </div>
+          <ErrorBoundary
+            title="Fairness &amp; Bias Audit Unavailable"
+            description="An unexpected error occurred while computing algorithmic fairness metrics. You can retry or return to Match Studio."
+            onReset={() => {
+              const targetJob = selectedJobId || leaderboardJobId || (jobs.length > 0 ? jobs[0]._id : '');
+              if (targetJob) fetchFairnessAudit(targetJob, fairnessThreshold);
+            }}
+            onNavigateHome={() => setActiveTab('matcher')}
+          >
+            <FairnessAuditView
+              jobs={jobs}
+              selectedJobId={selectedJobId || leaderboardJobId || (jobs.length > 0 ? jobs[0]._id : '')}
+              onSelectJob={(jId) => {
+                setSelectedJobId(jId);
+                fetchFairnessAudit(jId, fairnessThreshold);
+              }}
+              threshold={fairnessThreshold}
+              onChangeThreshold={(t) => {
+                setFairnessThreshold(t);
+                const targetJob = selectedJobId || leaderboardJobId || (jobs.length > 0 ? jobs[0]._id : '');
+                if (targetJob) fetchFairnessAudit(targetJob, t);
+              }}
+              auditData={fairnessAuditData}
+              loading={loadingFairness}
+              error={fairnessError}
+              onRetry={() => {
+                const targetJob = selectedJobId || leaderboardJobId || (jobs.length > 0 ? jobs[0]._id : '');
+                if (targetJob) fetchFairnessAudit(targetJob, fairnessThreshold);
+              }}
+              onNavigateTab={(tab) => setActiveTab(tab)}
+            />
+          </ErrorBoundary>
         )}
 
         {/* ============================================================== */}
