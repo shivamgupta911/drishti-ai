@@ -143,7 +143,7 @@ export function parseResumeText(rawText, options = { anonymize: true }) {
   const rawName = lines.length > 0 && lines[0].length < 40 ? lines[0] : 'Candidate Profile';
 
   // Apply bias-mitigation anonymization
-  const candidateName = options.anonymize ? 'Candidate (Anonymized for Bias Mitigation)' : rawName;
+  const candidateName = options.candidateName || options.anonymousLabel || (options.anonymize ? 'Candidate (Anonymized for Bias Mitigation)' : rawName);
   const email = options.anonymize && rawEmail ? `candidate_${Math.random().toString(36).substring(7)}@masked.drishti.ai` : rawEmail;
   const phone = options.anonymize && rawPhone ? '***-***-****' : rawPhone;
 

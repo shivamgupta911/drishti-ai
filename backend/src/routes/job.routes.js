@@ -56,7 +56,7 @@ router.post('/', authenticate, requirePrivateWorkspace, requireRole('recruiter',
 
     const job = await Job.create({
       title,
-      company: company || 'Drishti AI Partner',
+      company: (company && company.trim()) ? company.trim() : 'Company not specified',
       department: department || 'Engineering',
       description,
       minExperienceYears: calculatedMinExp,

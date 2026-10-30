@@ -30,21 +30,28 @@ const upload = multer({
 router.post('/', authenticate, requirePrivateWorkspace, requireRole('recruiter', 'admin'), async (req, res, next) => {
   try {
     const { rawText, candidateName, totalExperienceYears, skills, education, anonymize } = req.body;
+    const isAnonymize = anonymize !== false;
+    const existingCount = await Resume.countDocuments({ ownerId: req.tenant.id });
+    const defaultAnonymousName = `Candidate #${String(existingCount + 1).padStart(3, '0')}`;
 
     let resumeData;
     if (rawText && (!skills || skills.length === 0)) {
       // Auto-extract attributes using parser service
-      resumeData = parseResumeText(rawText, { anonymize: anonymize !== false });
-      if (candidateName) resumeData.candidateName = candidateName;
+      resumeData = parseResumeText(rawText, { anonymize: isAnonymize });
+      if (candidateName && candidateName.trim()) {
+        resumeData.candidateName = candidateName.trim();
+      } else if (isAnonymize) {
+        resumeData.candidateName = defaultAnonymousName;
+      }
       if (totalExperienceYears !== undefined) resumeData.totalExperienceYears = Number(totalExperienceYears);
     } else {
       resumeData = {
-        candidateName: candidateName || 'Anonymous Candidate',
+        candidateName: (candidateName && candidateName.trim()) ? candidateName.trim() : (isAnonymize ? defaultAnonymousName : 'Candidate Profile'),
         totalExperienceYears: Number(totalExperienceYears) || 0,
         skills: Array.isArray(skills) ? skills.map(s => typeof s === 'string' ? { name: s } : s) : [],
         education: education || [],
         rawText: rawText || '',
-        anonymized: anonymize !== false,
+        anonymized: isAnonymize,
       };
     }
 
@@ -75,7 +82,13 @@ router.post('/upload', authenticate, requirePrivateWorkspace, requireRole('recru
     }
 
     const anonymize = req.body.anonymize !== 'false';
+    const existingCount = await Resume.countDocuments({ ownerId: req.tenant.id });
+    const defaultAnonymousName = `Candidate #${String(existingCount + 1).padStart(3, '0')}`;
     const parsedAttributes = await parseDocumentBuffer(req.file.buffer, req.file.mimetype, { anonymize });
+
+    if (anonymize) {
+      parsedAttributes.candidateName = (req.body.candidateName && req.body.candidateName.trim()) || defaultAnonymousName;
+    }
 
     parsedAttributes.ownerId = req.tenant.id;
     parsedAttributes.isDemo = false;

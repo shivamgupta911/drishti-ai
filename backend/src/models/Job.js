@@ -9,7 +9,7 @@ const jobSchema = new mongoose.Schema(
     },
     company: {
       type: String,
-      default: 'Drishti AI Partner',
+      default: 'Company not specified',
       trim: true,
     },
     department: {

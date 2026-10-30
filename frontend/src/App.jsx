@@ -248,6 +248,7 @@ export default function App() {
 
   // Job form state
   const [jobTitle, setJobTitle] = useState('');
+  const [jobCompany, setJobCompany] = useState('');
   const [jobDepartment, setJobDepartment] = useState('Engineering');
   const [jobExpYears, setJobExpYears] = useState(3);
   const [jobDescription, setJobDescription] = useState('');
@@ -603,6 +604,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
           title: jobTitle,
+          company: jobCompany.trim() || undefined,
           department: jobDepartment,
           minExperienceYears: Number(jobExpYears),
           description: jobDescription,
@@ -611,6 +613,7 @@ export default function App() {
       await safeParseResponse(res);
       showBanner('Job posting created and required skills extracted!');
       setJobTitle('');
+      setJobCompany('');
       setJobDescription('');
       await fetchResumesAndJobs();
       setActiveTab('matcher');
@@ -1249,11 +1252,18 @@ export default function App() {
                     onChange={(e) => setSelectedResumeId(e.target.value)}
                     className="w-full bg-[#F5F6F3] border border-[#DDE3E1] rounded-lg p-2.5 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] font-medium cursor-pointer"
                   >
-                    {resumes.map((r) => (
-                      <option key={r._id} value={r._id}>
-                        {r.candidateName} • {r.totalExperienceYears} yrs experience ({r.skills?.length || 0} skills)
-                      </option>
-                    ))}
+                    {resumes.map((r, idx) => {
+                      const displayName = (r.candidateName && r.candidateName !== 'Candidate (Anonymized for Bias Mitigation)')
+                        ? r.candidateName
+                        : `Candidate #${String(idx + 1).padStart(3, '0')}`;
+                      const exp = r.totalExperienceYears != null ? r.totalExperienceYears : 0;
+                      const skillsCount = r.skills?.length || 0;
+                      return (
+                        <option key={r._id} value={r._id}>
+                          {displayName} • {exp} yrs experience ({skillsCount} skills)
+                        </option>
+                      );
+                    })}
                   </select>
                 ) : (
                   <div className="p-5 rounded-lg bg-[#F5F6F3] border border-dashed border-[#DDE3E1] text-center text-xs text-[#65717D]">
@@ -1267,11 +1277,15 @@ export default function App() {
                     {(() => {
                       const sel = resumes.find(r => r._id === selectedResumeId);
                       if (!sel) return null;
+                      const selIndex = resumes.findIndex(r => r._id === sel._id);
+                      const displayName = (sel.candidateName && sel.candidateName !== 'Candidate (Anonymized for Bias Mitigation)')
+                        ? sel.candidateName
+                        : `Candidate #${String(selIndex >= 0 ? selIndex + 1 : 1).padStart(3, '0')}`;
                       return (
                         <>
                           <div className="flex items-center justify-between text-[#202B35]">
-                            <span className="font-semibold text-sm">{sel.candidateName}</span>
-                            <span className="text-[#65717D] font-mono text-[11px]">{sel.totalExperienceYears} yrs tenure</span>
+                            <span className="font-semibold text-sm">{displayName}</span>
+                            <span className="text-[#65717D] font-mono text-[11px]">{sel.totalExperienceYears ?? 0} yrs tenure</span>
                           </div>
                           <p className="text-[11px] text-[#65717D] line-clamp-2 leading-relaxed">
                             {sel.summary || 'Profile summary extracted from candidate resume.'}
@@ -1311,11 +1325,15 @@ export default function App() {
                     onChange={(e) => setSelectedJobId(e.target.value)}
                     className="w-full bg-[#F5F6F3] border border-[#DDE3E1] rounded-lg p-2.5 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] font-medium cursor-pointer"
                   >
-                    {jobs.map((j) => (
-                      <option key={j._id} value={j._id}>
-                        {j.title} • {j.company} (Req: {j.minExperienceYears}+ yrs)
-                      </option>
-                    ))}
+                    {jobs.map((j) => {
+                      const companyName = (j.company && j.company !== 'Drishti AI Partner') ? j.company : 'Company not specified';
+                      const minExp = j.minExperienceYears != null ? j.minExperienceYears : 0;
+                      return (
+                        <option key={j._id} value={j._id}>
+                          {j.title} • {companyName} (Req: {minExp}+ yrs)
+                        </option>
+                      );
+                    })}
                   </select>
                 ) : (
                   <div className="p-5 rounded-lg bg-[#F5F6F3] border border-dashed border-[#DDE3E1] text-center text-xs text-[#65717D]">
@@ -1329,11 +1347,15 @@ export default function App() {
                     {(() => {
                       const sel = jobs.find(j => j._id === selectedJobId);
                       if (!sel) return null;
+                      const companyName = (sel.company && sel.company !== 'Drishti AI Partner') ? sel.company : 'Company not specified';
                       return (
                         <>
                           <div className="flex items-center justify-between text-[#202B35]">
-                            <span className="font-semibold text-sm">{sel.title}</span>
-                            <span className="text-[#65717D] font-mono text-[11px]">Min {sel.minExperienceYears} yrs req</span>
+                            <div>
+                              <span className="font-semibold text-sm block">{sel.title}</span>
+                              <span className="text-xs text-[#187D70] font-medium">{companyName}</span>
+                            </div>
+                            <span className="text-[#65717D] font-mono text-[11px]">Min {sel.minExperienceYears ?? 0} yrs req</span>
                           </div>
                           <p className="text-[11px] text-[#65717D] line-clamp-2 leading-relaxed">
                             {sel.description}
@@ -1701,9 +1723,12 @@ export default function App() {
                   }}
                   className="w-full sm:w-auto max-w-full bg-white border border-[#DDE3E1] rounded-lg px-3 py-2 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] font-medium cursor-pointer shadow-xs truncate min-w-0"
                 >
-                  {jobs.map((j) => (
-                    <option key={j._id} value={j._id}>{j.title}</option>
-                  ))}
+                  {jobs.map((j) => {
+                    const comp = (j.company && j.company !== 'Drishti AI Partner') ? j.company : 'Company not specified';
+                    return (
+                      <option key={j._id} value={j._id}>{j.title} ({comp})</option>
+                    );
+                  })}
                 </select>
               </div>
             </div>
@@ -1841,9 +1866,18 @@ export default function App() {
                     onChange={(e) => setCompCandA(e.target.value)}
                     className="w-full bg-[#F5F6F3] border border-[#DDE3E1] rounded-lg p-2 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] font-medium cursor-pointer"
                   >
-                    {resumes.map(r => (
-                      <option key={r._id} value={r._id}>{r.candidateName}</option>
-                    ))}
+                    {resumes.map((r, idx) => {
+                      const displayName = (r.candidateName && r.candidateName !== 'Candidate (Anonymized for Bias Mitigation)')
+                        ? r.candidateName
+                        : `Candidate #${String(idx + 1).padStart(3, '0')}`;
+                      const exp = r.totalExperienceYears != null ? r.totalExperienceYears : 0;
+                      const skillsCount = r.skills?.length || 0;
+                      return (
+                        <option key={r._id} value={r._id}>
+                          {displayName} • {exp} yrs ({skillsCount} skills)
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -1854,9 +1888,18 @@ export default function App() {
                     onChange={(e) => setCompCandB(e.target.value)}
                     className="w-full bg-[#F5F6F3] border border-[#DDE3E1] rounded-lg p-2 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] font-medium cursor-pointer"
                   >
-                    {resumes.map(r => (
-                      <option key={r._id} value={r._id}>{r.candidateName}</option>
-                    ))}
+                    {resumes.map((r, idx) => {
+                      const displayName = (r.candidateName && r.candidateName !== 'Candidate (Anonymized for Bias Mitigation)')
+                        ? r.candidateName
+                        : `Candidate #${String(idx + 1).padStart(3, '0')}`;
+                      const exp = r.totalExperienceYears != null ? r.totalExperienceYears : 0;
+                      const skillsCount = r.skills?.length || 0;
+                      return (
+                        <option key={r._id} value={r._id}>
+                          {displayName} • {exp} yrs ({skillsCount} skills)
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -1867,9 +1910,15 @@ export default function App() {
                     onChange={(e) => setCompJobId(e.target.value)}
                     className="w-full bg-[#F5F6F3] border border-[#DDE3E1] rounded-lg p-2 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] font-medium cursor-pointer"
                   >
-                    {jobs.map(j => (
-                      <option key={j._id} value={j._id}>{j.title}</option>
-                    ))}
+                    {jobs.map(j => {
+                      const comp = (j.company && j.company !== 'Drishti AI Partner') ? j.company : 'Company not specified';
+                      const reqExp = j.minExperienceYears != null ? j.minExperienceYears : 0;
+                      return (
+                        <option key={j._id} value={j._id}>
+                          {j.title} • {comp} (Req: {reqExp}+ yrs)
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>
@@ -2105,9 +2154,16 @@ export default function App() {
                     }}
                     className="bg-white border border-[#DDE3E1] rounded-lg px-3 py-1.5 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] cursor-pointer shadow-xs font-medium max-w-[180px] sm:max-w-none truncate"
                   >
-                    {jobs.map(j => (
-                      <option key={j._id} value={j._id}>{j.title}</option>
-                    ))}
+                    {jobs.map((j) => {
+                      const companyName = (j.company && j.company.trim() && j.company !== 'Drishti AI Partner')
+                        ? j.company
+                        : 'Company not specified';
+                      return (
+                        <option key={j._id} value={j._id}>
+                          {j.title} ({companyName})
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>
@@ -2324,11 +2380,15 @@ export default function App() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {resumes.map((r) => (
+                  {resumes.map((r, idx) => {
+                    const displayName = (r.candidateName && r.candidateName !== 'Candidate (Anonymized for Bias Mitigation)')
+                      ? r.candidateName
+                      : `Candidate #${String(idx + 1).padStart(3, '0')}`;
+                    return (
                     <div key={r._id} className="p-5 rounded-xl bg-white border border-[#DDE3E1] shadow-xs flex flex-col justify-between space-y-4">
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="font-semibold text-sm text-[#202B35]">{r.candidateName}</span>
+                          <span className="font-semibold text-sm text-[#202B35]">{displayName}</span>
                           <button
                             onClick={() => handleDeleteResume(r._id)}
                             className="text-[#65717D] hover:text-[#BD4148] transition p-1"
@@ -2345,8 +2405,8 @@ export default function App() {
                         </p>
 
                         <div className="flex flex-wrap gap-1.5 pt-2">
-                          {r.skills?.slice(0, 8).map((s, idx) => (
-                            <span key={idx} className="px-2 py-0.5 rounded-md bg-[#EEF2F1] text-[#202B35] text-[10px] font-medium">
+                          {r.skills?.slice(0, 8).map((s, sIdx) => (
+                            <span key={sIdx} className="px-2 py-0.5 rounded-md bg-[#EEF2F1] text-[#202B35] text-[10px] font-medium">
                               {typeof s === 'string' ? s : s.name}
                             </span>
                           ))}
@@ -2368,7 +2428,8 @@ export default function App() {
                         </button>
                       </div>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               )}
             </div>
@@ -2396,7 +2457,7 @@ export default function App() {
                 <span>Create New Job Posting</span>
               </h2>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-[#202B35]">Job Title</label>
                   <input
@@ -2405,6 +2466,17 @@ export default function App() {
                     value={jobTitle}
                     onChange={(e) => setJobTitle(e.target.value)}
                     placeholder="e.g. Lead Backend Engineer"
+                    className="w-full bg-[#F5F6F3] border border-[#DDE3E1] rounded-lg p-2.5 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70]"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-[#202B35]">Company Name</label>
+                  <input
+                    type="text"
+                    value={jobCompany}
+                    onChange={(e) => setJobCompany(e.target.value)}
+                    placeholder="e.g. Acme Tech Labs"
                     className="w-full bg-[#F5F6F3] border border-[#DDE3E1] rounded-lg p-2.5 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70]"
                   />
                 </div>
@@ -2497,7 +2569,7 @@ export default function App() {
                       </div>
 
                       <div className="pt-3 border-t border-[#DDE3E1] flex items-center justify-between text-[11px] text-[#65717D]">
-                        <span>{j.company}</span>
+                        <span>{(j.company && j.company.trim() && j.company !== 'Drishti AI Partner') ? j.company : 'Company not specified'}</span>
                         <button
                           onClick={() => { setSelectedJobId(j._id); setActiveTab('matcher'); }}
                           className="text-[#187D70] hover:text-[#12685E] font-medium flex items-center gap-1"
@@ -2639,7 +2711,7 @@ export default function App() {
               <div className="p-4 rounded-lg bg-[#F5F6F3] border border-[#DDE3E1] space-y-1.5">
                 <div className="text-[#187D70] font-semibold">DOSSIER_ID: {activeDossier.dossierId}</div>
                 <div className="text-[#65717D]">TIMESTAMP: {activeDossier.generatedAt}</div>
-                <div className="text-[#65717D]">ROLE: {activeDossier.role?.title} ({activeDossier.role?.company})</div>
+                <div className="text-[#65717D]">ROLE: {activeDossier.role?.title} ({(activeDossier.role?.company && activeDossier.role?.company !== 'Drishti AI Partner') ? activeDossier.role?.company : 'Company not specified'})</div>
                 <div className="text-[#65717D]">CANDIDATE: {activeDossier.candidate?.identifier}</div>
                 <div className="text-[#187D58] font-bold">SCORE: {activeDossier.evaluation?.overallScore}%</div>
               </div>

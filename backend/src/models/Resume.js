@@ -4,7 +4,7 @@ const resumeSchema = new mongoose.Schema(
   {
     candidateName: {
       type: String,
-      default: 'Anonymous Candidate',
+      default: 'Candidate Profile',
       trim: true,
     },
     email: {

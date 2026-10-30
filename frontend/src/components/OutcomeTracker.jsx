@@ -122,11 +122,16 @@ export default function OutcomeTracker({ candidates = [], jobs = [], selectedJob
             onChange={(e) => setActiveJobId(e.target.value)}
             className="w-full sm:w-auto max-w-full px-3 py-2 rounded-lg bg-white border border-[#DDE3E1] text-xs font-medium text-[#202B35] focus:outline-none focus:border-[#187D70] truncate min-w-0 cursor-pointer"
           >
-            {jobs.map((j) => (
-              <option key={j._id} value={j._id}>
-                {j.title}
-              </option>
-            ))}
+            {jobs.map((j) => {
+              const comp = (j.company && j.company.trim() && j.company !== 'Drishti AI Partner')
+                ? j.company
+                : 'Company not specified';
+              return (
+                <option key={j._id} value={j._id}>
+                  {j.title} ({comp})
+                </option>
+              );
+            })}
           </select>
         </div>
       </div>
@@ -148,11 +153,17 @@ export default function OutcomeTracker({ candidates = [], jobs = [], selectedJob
                 onChange={(e) => setSelectedResumeId(e.target.value)}
                 className="w-full p-2.5 rounded-lg border border-[#DDE3E1] bg-[#F5F6F3] text-xs text-[#202B35] focus:outline-none focus:border-[#187D70]"
               >
-                {candidates.map((c) => (
-                  <option key={c._id} value={c._id}>
-                    {c.candidateName} ({c.totalExperienceYears} yrs exp)
-                  </option>
-                ))}
+                {candidates.map((c, idx) => {
+                  const displayName = (c.candidateName && c.candidateName !== 'Candidate (Anonymized for Bias Mitigation)')
+                    ? c.candidateName
+                    : `Candidate #${String(idx + 1).padStart(3, '0')}`;
+                  const exp = c.totalExperienceYears ?? 0;
+                  return (
+                    <option key={c._id} value={c._id}>
+                      {displayName} ({exp} yrs exp)
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
