@@ -15,6 +15,7 @@ import {
   ChevronRight, 
   AlertTriangle, 
   Trash2, 
+  Pencil,
   Zap, 
   BarChart3, 
   FileCheck, 
@@ -257,6 +258,26 @@ export default function App() {
   const [jobDescription, setJobDescription] = useState('');
   const [submittingJob, setSubmittingJob] = useState(false);
 
+  // Edit Job Modal state
+  const [editJobModalOpen, setEditJobModalOpen] = useState(false);
+  const [editingJobId, setEditingJobId] = useState('');
+  const [editJobTitle, setEditJobTitle] = useState('');
+  const [editJobCompany, setEditJobCompany] = useState('');
+  const [editJobDepartment, setEditJobDepartment] = useState('Engineering');
+  const [editJobExpYears, setEditJobExpYears] = useState(3);
+  const [editJobDescription, setEditJobDescription] = useState('');
+  const [editJobSkills, setEditJobSkills] = useState('');
+  const [submittingEditJob, setSubmittingEditJob] = useState(false);
+
+  // Edit Candidate Modal state
+  const [editCandModalOpen, setEditCandModalOpen] = useState(false);
+  const [editingCandId, setEditingCandId] = useState('');
+  const [editCandName, setEditCandName] = useState('');
+  const [editCandExpYears, setEditCandExpYears] = useState(0);
+  const [editCandSummary, setEditCandSummary] = useState('');
+  const [editCandSkills, setEditCandSkills] = useState('');
+  const [submittingEditCand, setSubmittingEditCand] = useState(false);
+
   // Notification message
   const [bannerMsg, setBannerMsg] = useState(null);
 
@@ -274,6 +295,8 @@ export default function App() {
         setAuditModalOpen(false);
         setWebhookModalOpen(false);
         setAuthModalOpen(false);
+        setEditJobModalOpen(false);
+        setEditCandModalOpen(false);
         setActiveDossier(null);
       }
     };
@@ -574,6 +597,7 @@ export default function App() {
     e.preventDefault();
     setSubmittingResume(true);
     try {
+      const token = getAuthToken();
       if (resumeFile) {
         const formData = new FormData();
         formData.append('resumeFile', resumeFile);
@@ -581,6 +605,9 @@ export default function App() {
 
         const res = await fetch(getApiUrl('/api/resumes/upload'), {
           method: 'POST',
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: formData,
         });
         await safeParseResponse(res);
@@ -591,7 +618,11 @@ export default function App() {
       } else if (resumeText.trim()) {
         const res = await fetch(getApiUrl('/api/resumes'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({ rawText: resumeText, anonymize: anonymizePII }),
         });
         await safeParseResponse(res);
@@ -612,9 +643,14 @@ export default function App() {
     if (!jobTitle || !jobDescription) return;
     setSubmittingJob(true);
     try {
+      const token = getAuthToken();
       const res = await fetch(getApiUrl('/api/jobs'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           title: jobTitle,
           company: jobCompany.trim() || undefined,
@@ -637,6 +673,128 @@ export default function App() {
     }
   };
 
+  const openEditJob = (j) => {
+    if (activeUser?.isDemo) {
+      showBanner('Editing records is disabled in the public demo. Sign in to your private workspace to edit records.');
+      return;
+    }
+    if (!['recruiter', 'admin'].includes(activeUser?.role)) {
+      showBanner('Job posting modification requires Recruiter or Admin role.');
+      return;
+    }
+    setEditingJobId(j._id);
+    setEditJobTitle(j.title || '');
+    setEditJobCompany(j.company && j.company !== 'Drishti AI Partner' ? j.company : '');
+    setEditJobDepartment(j.department || 'Engineering');
+    setEditJobExpYears(j.minExperienceYears != null ? j.minExperienceYears : 0);
+    setEditJobDescription(j.description || '');
+    const skillsStr = (j.requiredSkills || []).map(s => (typeof s === 'string' ? s : s.name)).join(', ');
+    setEditJobSkills(skillsStr);
+    setEditJobModalOpen(true);
+  };
+
+  const handleUpdateJob = async (e) => {
+    e.preventDefault();
+    if (!editJobTitle.trim() || !editJobDescription.trim()) {
+      showBanner('Title and description are required.');
+      return;
+    }
+    setSubmittingEditJob(true);
+    try {
+      const token = getAuthToken();
+      const skillsArray = editJobSkills
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(name => ({ name, weight: 1.0 }));
+
+      const res = await fetch(getApiUrl(`/api/jobs/${editingJobId}`), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          title: editJobTitle.trim(),
+          company: editJobCompany.trim() || undefined,
+          department: editJobDepartment,
+          minExperienceYears: Number(editJobExpYears),
+          description: editJobDescription.trim(),
+          requiredSkills: skillsArray.length > 0 ? skillsArray : undefined,
+        }),
+      });
+      const data = await safeParseResponse(res);
+      showBanner('Job posting updated successfully!');
+      setEditJobModalOpen(false);
+      setJobs(prev => prev.map(j => (j._id === editingJobId ? data.data : j)));
+      if (selectedJobId === editingJobId) {
+        setMatchResult(null);
+      }
+    } catch (err) {
+      showBanner(`Job update failed: ${err.message}`);
+    } finally {
+      setSubmittingEditJob(false);
+    }
+  };
+
+  const openEditCandidate = (r) => {
+    if (activeUser?.isDemo) {
+      showBanner('Editing records is disabled in the public demo. Sign in to your private workspace to edit records.');
+      return;
+    }
+    if (!['recruiter', 'admin'].includes(activeUser?.role)) {
+      showBanner('Candidate profile modification requires Recruiter or Admin role.');
+      return;
+    }
+    setEditingCandId(r._id);
+    setEditCandName(r.candidateName || '');
+    setEditCandExpYears(r.totalExperienceYears != null ? r.totalExperienceYears : 0);
+    setEditCandSummary(r.summary || '');
+    const skillsStr = (r.skills || []).map(s => (typeof s === 'string' ? s : s.name)).join(', ');
+    setEditCandSkills(skillsStr);
+    setEditCandModalOpen(true);
+  };
+
+  const handleUpdateCandidate = async (e) => {
+    e.preventDefault();
+    setSubmittingEditCand(true);
+    try {
+      const token = getAuthToken();
+      const skillsArray = editCandSkills
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(name => ({ name }));
+
+      const res = await fetch(getApiUrl(`/api/resumes/${editingCandId}`), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          candidateName: editCandName.trim() || undefined,
+          totalExperienceYears: Number(editCandExpYears),
+          summary: editCandSummary.trim(),
+          skills: skillsArray,
+        }),
+      });
+      const data = await safeParseResponse(res);
+      showBanner('Candidate profile updated successfully!');
+      setEditCandModalOpen(false);
+      setResumes(prev => prev.map(r => (r._id === editingCandId ? data.data : r)));
+      if (selectedResumeId === editingCandId) {
+        setMatchResult(null);
+      }
+    } catch (err) {
+      showBanner(`Candidate update failed: ${err.message}`);
+    } finally {
+      setSubmittingEditCand(false);
+    }
+  };
+
   const handleDeleteResume = async (id) => {
     if (activeUser?.isDemo) {
       showBanner('Record deletion is disabled in the public demo. Sign in to your private workspace to manage records.');
@@ -648,7 +806,14 @@ export default function App() {
     }
     if (!window.confirm('Are you sure you want to delete this candidate profile?')) return;
     try {
-      const res = await fetch(getApiUrl(`/api/resumes/${id}`), { method: 'DELETE' });
+      const token = getAuthToken();
+      const res = await fetch(getApiUrl(`/api/resumes/${id}`), {
+        method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
       await safeParseResponse(res);
       showBanner('Candidate record deleted.');
       await fetchResumesAndJobs();
@@ -668,7 +833,14 @@ export default function App() {
     }
     if (!window.confirm('Are you sure you want to delete this job posting?')) return;
     try {
-      const res = await fetch(getApiUrl(`/api/jobs/${id}`), { method: 'DELETE' });
+      const token = getAuthToken();
+      const res = await fetch(getApiUrl(`/api/jobs/${id}`), {
+        method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
       await safeParseResponse(res);
       showBanner('Job posting deleted.');
       await fetchResumesAndJobs();
@@ -1266,7 +1438,10 @@ export default function App() {
                 {resumes.length > 0 ? (
                   <select
                     value={selectedResumeId}
-                    onChange={(e) => setSelectedResumeId(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedResumeId(e.target.value);
+                      setMatchResult(null);
+                    }}
                     className="w-full bg-[#F5F6F3] border border-[#DDE3E1] rounded-lg p-2.5 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] font-medium cursor-pointer"
                   >
                     {resumes.map((r, idx) => {
@@ -1339,7 +1514,10 @@ export default function App() {
                 {jobs.length > 0 ? (
                   <select
                     value={selectedJobId}
-                    onChange={(e) => setSelectedJobId(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedJobId(e.target.value);
+                      setMatchResult(null);
+                    }}
                     className="w-full bg-[#F5F6F3] border border-[#DDE3E1] rounded-lg p-2.5 text-xs text-[#202B35] focus:outline-none focus:border-[#187D70] font-medium cursor-pointer"
                   >
                     {jobs.map((j) => {
@@ -2251,13 +2429,22 @@ export default function App() {
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="font-semibold text-sm text-[#202B35]">{displayName}</span>
-                          <button
-                            onClick={() => handleDeleteResume(r._id)}
-                            className="text-[#65717D] hover:text-[#BD4148] transition p-1"
-                            title="Delete candidate profile"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => openEditCandidate(r)}
+                              className="text-[#65717D] hover:text-[#187D70] transition p-1 cursor-pointer"
+                              title="Edit candidate profile"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteResume(r._id)}
+                              className="text-[#65717D] hover:text-[#BD4148] transition p-1 cursor-pointer"
+                              title="Delete candidate profile"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                         <div className="text-xs text-[#65717D] font-mono">
                           {r.totalExperienceYears} years documented experience
@@ -2403,13 +2590,22 @@ export default function App() {
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="font-semibold text-sm text-[#202B35]">{j.title}</span>
-                          <button
-                            onClick={() => handleDeleteJob(j._id)}
-                            className="text-[#65717D] hover:text-[#BD4148] transition p-1"
-                            title="Delete job posting"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => openEditJob(j)}
+                              className="text-[#65717D] hover:text-[#187D70] transition p-1 cursor-pointer"
+                              title="Edit job posting"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteJob(j._id)}
+                              className="text-[#65717D] hover:text-[#BD4148] transition p-1 cursor-pointer"
+                              title="Delete job posting"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                         <div className="text-xs text-[#65717D]">
                           {j.department} • Min {j.minExperienceYears} yrs experience
@@ -2856,6 +3052,255 @@ export default function App() {
                     <UserCheck className="w-4 h-4" />
                   )}
                   <span>{authSubmitting ? 'Verifying...' : authMode === 'login' ? 'Sign In' : 'Create Account'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL 5: EDIT JOB POSTING MODAL                                */}
+      {/* ============================================================== */}
+      {editJobModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-job-modal-title"
+        >
+          <div className="bg-white rounded-2xl border border-[#DDE3E1] shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-6 py-5 border-b border-[#DDE3E1] flex items-center justify-between bg-[#FBFBFA] sticky top-0 z-10">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-[#E5F3EF] text-[#187D70]">
+                  <Briefcase className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 id="edit-job-modal-title" className="text-base font-bold text-[#202B35]">
+                    Edit Job Posting
+                  </h3>
+                  <p className="text-xs text-[#65717D]">
+                    Update job requisition title, company, requirements, and required skills
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditJobModalOpen(false)}
+                className="p-1.5 rounded-lg text-[#65717D] hover:text-[#202B35] hover:bg-[#F5F6F3] transition cursor-pointer"
+                aria-label="Close edit job modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form Body */}
+            <form onSubmit={handleUpdateJob} className="p-6 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-[#202B35] mb-1.5">Job Title *</label>
+                <input
+                  type="text"
+                  required
+                  value={editJobTitle}
+                  onChange={(e) => setEditJobTitle(e.target.value)}
+                  placeholder="e.g. Senior Backend Engineer"
+                  className="w-full px-3 py-2.5 rounded-lg border border-[#DDE3E1] bg-[#FBFBFA] focus:bg-white focus:outline-none focus:border-[#187D70] text-[#202B35] font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-[#202B35] mb-1.5">Company Name</label>
+                  <input
+                    type="text"
+                    value={editJobCompany}
+                    onChange={(e) => setEditJobCompany(e.target.value)}
+                    placeholder="e.g. Acme Labs"
+                    className="w-full px-3 py-2.5 rounded-lg border border-[#DDE3E1] bg-[#FBFBFA] focus:bg-white focus:outline-none focus:border-[#187D70] text-[#202B35] font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-[#202B35] mb-1.5">Department</label>
+                  <select
+                    value={editJobDepartment}
+                    onChange={(e) => setEditJobDepartment(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-lg border border-[#DDE3E1] bg-[#FBFBFA] focus:bg-white focus:outline-none focus:border-[#187D70] text-[#202B35] font-medium cursor-pointer"
+                  >
+                    <option value="Engineering">Engineering</option>
+                    <option value="Data Science">Data Science</option>
+                    <option value="Product">Product</option>
+                    <option value="Design">Design</option>
+                    <option value="Security">Security</option>
+                    <option value="Operations">Operations</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#202B35] mb-1.5">Minimum Experience Requirement (Years)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="30"
+                  value={editJobExpYears}
+                  onChange={(e) => setEditJobExpYears(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  className="w-full px-3 py-2.5 rounded-lg border border-[#DDE3E1] bg-[#FBFBFA] focus:bg-white focus:outline-none focus:border-[#187D70] text-[#202B35] font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#202B35] mb-1.5">Required Skills (Comma-separated)</label>
+                <input
+                  type="text"
+                  value={editJobSkills}
+                  onChange={(e) => setEditJobSkills(e.target.value)}
+                  placeholder="e.g. React, Node.js, TypeScript, PostgreSQL"
+                  className="w-full px-3 py-2.5 rounded-lg border border-[#DDE3E1] bg-[#FBFBFA] focus:bg-white focus:outline-none focus:border-[#187D70] text-[#202B35] font-medium"
+                />
+                <span className="text-[10px] text-[#65717D] mt-1 block">Specify mandatory skills or leave empty to auto-extract from description</span>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#202B35] mb-1.5">Job Description &amp; Responsibilities *</label>
+                <textarea
+                  required
+                  rows={4}
+                  value={editJobDescription}
+                  onChange={(e) => setEditJobDescription(e.target.value)}
+                  placeholder="Describe role scope, key deliverables, and technologies..."
+                  className="w-full px-3 py-2.5 rounded-lg border border-[#DDE3E1] bg-[#FBFBFA] focus:bg-white focus:outline-none focus:border-[#187D70] text-[#202B35] font-medium leading-relaxed"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-3 border-t border-[#DDE3E1]">
+                <button
+                  type="button"
+                  onClick={() => setEditJobModalOpen(false)}
+                  className="px-4 py-2.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#F5F6F3] text-[#202B35] font-semibold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingEditJob}
+                  className="px-5 py-2.5 rounded-lg bg-[#187D70] hover:bg-[#12685E] text-white font-semibold flex items-center gap-2 transition disabled:opacity-50 shadow-xs cursor-pointer"
+                >
+                  {submittingEditJob ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4" />
+                  )}
+                  <span>{submittingEditJob ? 'Saving Changes...' : 'Save Job Changes'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL 6: EDIT CANDIDATE PROFILE MODAL                          */}
+      {/* ============================================================== */}
+      {editCandModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-cand-modal-title"
+        >
+          <div className="bg-white rounded-2xl border border-[#DDE3E1] shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-6 py-5 border-b border-[#DDE3E1] flex items-center justify-between bg-[#FBFBFA] sticky top-0 z-10">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-[#E5F3EF] text-[#187D70]">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 id="edit-cand-modal-title" className="text-base font-bold text-[#202B35]">
+                    Edit Candidate Profile
+                  </h3>
+                  <p className="text-xs text-[#65717D]">
+                    Update candidate label, documented experience, skills, and summary
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditCandModalOpen(false)}
+                className="p-1.5 rounded-lg text-[#65717D] hover:text-[#202B35] hover:bg-[#F5F6F3] transition cursor-pointer"
+                aria-label="Close edit candidate modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form Body */}
+            <form onSubmit={handleUpdateCandidate} className="p-6 space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-[#202B35] mb-1.5">Candidate Name / Label</label>
+                  <input
+                    type="text"
+                    value={editCandName}
+                    onChange={(e) => setEditCandName(e.target.value)}
+                    placeholder="e.g. Candidate #001"
+                    className="w-full px-3 py-2.5 rounded-lg border border-[#DDE3E1] bg-[#FBFBFA] focus:bg-white focus:outline-none focus:border-[#187D70] text-[#202B35] font-medium"
+                  />
+                  <span className="text-[10px] text-[#65717D] mt-1 block">Preserves bias-free anonymization</span>
+                </div>
+                <div>
+                  <label className="block font-semibold text-[#202B35] mb-1.5">Total Experience (Years)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="40"
+                    value={editCandExpYears}
+                    onChange={(e) => setEditCandExpYears(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    className="w-full px-3 py-2.5 rounded-lg border border-[#DDE3E1] bg-[#FBFBFA] focus:bg-white focus:outline-none focus:border-[#187D70] text-[#202B35] font-medium"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#202B35] mb-1.5">Technical Skills (Comma-separated)</label>
+                <input
+                  type="text"
+                  value={editCandSkills}
+                  onChange={(e) => setEditCandSkills(e.target.value)}
+                  placeholder="e.g. React, Node.js, Python, AWS, Docker"
+                  className="w-full px-3 py-2.5 rounded-lg border border-[#DDE3E1] bg-[#FBFBFA] focus:bg-white focus:outline-none focus:border-[#187D70] text-[#202B35] font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#202B35] mb-1.5">Professional Summary</label>
+                <textarea
+                  rows={3}
+                  value={editCandSummary}
+                  onChange={(e) => setEditCandSummary(e.target.value)}
+                  placeholder="Summary of experience and background..."
+                  className="w-full px-3 py-2.5 rounded-lg border border-[#DDE3E1] bg-[#FBFBFA] focus:bg-white focus:outline-none focus:border-[#187D70] text-[#202B35] font-medium leading-relaxed"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-3 border-t border-[#DDE3E1]">
+                <button
+                  type="button"
+                  onClick={() => setEditCandModalOpen(false)}
+                  className="px-4 py-2.5 rounded-lg border border-[#DDE3E1] bg-white hover:bg-[#F5F6F3] text-[#202B35] font-semibold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingEditCand}
+                  className="px-5 py-2.5 rounded-lg bg-[#187D70] hover:bg-[#12685E] text-white font-semibold flex items-center gap-2 transition disabled:opacity-50 shadow-xs cursor-pointer"
+                >
+                  {submittingEditCand ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4" />
+                  )}
+                  <span>{submittingEditCand ? 'Saving Profile...' : 'Save Profile Changes'}</span>
                 </button>
               </div>
             </form>

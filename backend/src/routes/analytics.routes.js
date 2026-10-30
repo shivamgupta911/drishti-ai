@@ -251,6 +251,9 @@ router.post('/simulate', async (req, res, next) => {
       data: simulation,
     });
   } catch (error) {
+    if (error.message && error.message.includes('weights must sum')) {
+      return res.status(400).json({ error: error.message });
+    }
     next(error);
   }
 });

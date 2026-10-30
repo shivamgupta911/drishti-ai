@@ -18,7 +18,9 @@ const upload = multer({
     if (file.mimetype === 'application/pdf' || file.mimetype === 'text/plain' || file.originalname.match(/\.(pdf|txt)$/i)) {
       cb(null, true);
     } else {
-      cb(new Error('Only PDF and TXT files are supported for resume ingestion.'));
+      const err = new Error('Only PDF and TXT files are supported for resume ingestion.');
+      err.status = 400;
+      cb(err);
     }
   },
 });
@@ -77,8 +79,8 @@ router.post('/', authenticate, requirePrivateWorkspace, requireRole('recruiter',
  */
 router.post('/upload', authenticate, requirePrivateWorkspace, requireRole('recruiter', 'admin'), upload.single('resumeFile'), async (req, res, next) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'Please upload a PDF or TXT resume file.' });
+    if (!req.file || req.file.size === 0) {
+      return res.status(400).json({ error: 'Please upload a valid, non-empty PDF or TXT resume file.' });
     }
 
     const anonymize = req.body.anonymize !== 'false';
@@ -145,6 +147,65 @@ router.get('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Resume not found' });
     }
     res.status(200).json({ success: true, data: resume });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/resumes/:id
+ * Update a candidate profile in private workspace (Recruiter / Admin only, workspace owner only)
+ */
+router.put('/:id', authenticate, requirePrivateWorkspace, requireRole('recruiter', 'admin'), async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: `Invalid resume identifier: '${req.params.id}'` });
+    }
+
+    const filter = { _id: req.params.id, ownerId: req.tenant.id };
+    const resume = await Resume.findOne(filter);
+    if (!resume) {
+      return res.status(404).json({ error: 'Resume not found' });
+    }
+
+    const { candidateName, totalExperienceYears, summary, skills, education, rawText } = req.body;
+
+    if (candidateName !== undefined) {
+      const trimmedName = candidateName.trim();
+      if (trimmedName) resume.candidateName = trimmedName;
+    }
+
+    if (totalExperienceYears !== undefined) {
+      const parsedExp = Number(totalExperienceYears);
+      if (isNaN(parsedExp) || parsedExp < 0) {
+        return res.status(400).json({ error: 'Total experience years must be a non-negative number.' });
+      }
+      resume.totalExperienceYears = parsedExp;
+    }
+
+    if (summary !== undefined) {
+      resume.summary = summary;
+    }
+
+    if (rawText !== undefined) {
+      resume.rawText = rawText;
+    }
+
+    if (education !== undefined && Array.isArray(education)) {
+      resume.education = education;
+    }
+
+    if (skills !== undefined && Array.isArray(skills)) {
+      resume.skills = skills.map(s => (typeof s === 'string' ? { name: s.trim() } : s)).filter(s => s.name);
+    }
+
+    await resume.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Candidate profile updated successfully.',
+      data: resume,
+    });
   } catch (error) {
     next(error);
   }

@@ -27,9 +27,11 @@ export function simulateHiringScenario(resumes = [], job, scenarioConfig = {}) {
     (weights.preferredWeight || 0);
 
   if (Math.abs(sumWeights - 1.0) > 0.02) {
-    throw new Error(
+    const err = new Error(
       `Scenario component weights must sum to exactly 100% (1.0). Current sum: ${Math.round(sumWeights * 100)}%.`
     );
+    err.status = 400;
+    throw err;
   }
 
   // 2. Formulate Simulated Job Specification
